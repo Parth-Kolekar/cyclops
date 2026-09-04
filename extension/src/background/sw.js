@@ -145,6 +145,7 @@ async function runGoal(goal) {
   sessionId = crypto.randomUUID();
 
   const history = [];
+  let lastPlanner = null;
 
   try {
     const tab = await getActiveTab();
@@ -191,6 +192,13 @@ async function runGoal(goal) {
 
       const raw = plan.steps?.[0];
       if (!raw) throw new Error('server returned an empty plan');
+
+      // Announced once per run, and again if it ever changes — which is how a
+      // silent fallback to the rule stub becomes visible mid-demo.
+      if (plan.planner && plan.planner !== lastPlanner) {
+        lastPlanner = plan.planner;
+        trace({ kind: 'perceive', text: `planner: ${plan.planner}` });
+      }
 
       trace({
         kind: 'plan',

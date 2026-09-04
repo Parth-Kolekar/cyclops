@@ -2,6 +2,11 @@
 
 Phase 2: every inbound payload is independently re-scanned for PII before it
 reaches the planner, and rejected outright if anything got through.
+
+Phase 3: the planner is a real LLM. It reasons over redacted text and refers to
+personal data only by placeholder. If it is unreachable, slow, or returns
+something we refuse to act on, we fall back to the Phase 0 rule stub — a demo
+that degrades is better than a demo that stops.
 """
 
 import time
@@ -9,11 +14,12 @@ import time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import config
 from .guard import verifier
-from .planner import stub
+from .planner import llm, stub
 from .schema import Plan, SanitizedPayload
 
-app = FastAPI(title="Cyclops", version="0.2.0")
+app = FastAPI(title="Cyclops", version="0.3.0")
 
 # The extension calls in from a chrome-extension:// origin.
 app.add_middleware(
@@ -30,6 +36,8 @@ METRICS = {
     "rejected": 0,
     "pii_seen_server_side": 0,
     "latency_ms": [],
+    "llm_calls": 0,
+    "llm_fallbacks": 0,
 }
 
 
@@ -38,15 +46,34 @@ def health():
     return {
         "ok": True,
         "service": "cyclops",
-        "planner": "stub",
-        "phase": 2,
+        "planner": f"gemini:{config.GEMINI_MODEL}" if config.llm_enabled() else "stub",
+        "planner_mode": config.PLANNER_MODE,
+        "phase": 3,
         "guard": "enabled",
         "uptime_s": round(time.time() - STARTED_AT, 1),
     }
 
 
+async def _decide(payload: SanitizedPayload) -> Plan:
+    """Real planner when we can, rule stub when we must."""
+    if not config.llm_enabled():
+        return stub.plan(payload)
+
+    METRICS["llm_calls"] += 1
+    try:
+        return await llm.plan(payload)
+    except Exception as err:
+        METRICS["llm_fallbacks"] += 1
+        print(f"[llm] falling back to stub — {type(err).__name__}: {err or 'no detail'}")
+        if not config.allow_fallback():
+            raise HTTPException(status_code=502, detail={"error": "planner_failed", "detail": str(err)})
+        result = stub.plan(payload)
+        result.planner = "stub (llm failed)"
+        return result
+
+
 @app.post("/v1/plan", response_model=Plan)
-def plan(payload: SanitizedPayload):
+async def plan(payload: SanitizedPayload):
     t0 = time.perf_counter()
     METRICS["requests"] += 1
 
@@ -65,7 +92,7 @@ def plan(payload: SanitizedPayload):
         )
 
     METRICS["clean"] += 1
-    result = stub.plan(payload)
+    result = await _decide(payload)
     took = (time.perf_counter() - t0) * 1000
     METRICS["latency_ms"] = (METRICS["latency_ms"] + [round(took, 2)])[-200:]
 
@@ -73,7 +100,8 @@ def plan(payload: SanitizedPayload):
     print(
         f"[plan] step={payload.step} elements={len(payload.elements)} "
         f"tokens={manifest.regions_masked} {manifest.token_types} "
-        f'goal="{payload.goal[:40]}" -> {result.steps[0].action} ({took:.1f} ms)'
+        f'goal="{payload.goal[:40]}" -> {result.steps[0].action} '
+        f"via {result.planner} ({took:.1f} ms)"
     )
     return result
 
@@ -99,6 +127,8 @@ def metrics():
         "payloads_rejected": METRICS["rejected"],
         # The line for the results slide.
         "pii_seen_server_side": METRICS["pii_seen_server_side"],
+        "llm_calls": METRICS["llm_calls"],
+        "llm_fallbacks": METRICS["llm_fallbacks"],
         "planner_latency_ms": {
             "last": lat[-1] if lat else None,
             "avg": round(sum(lat) / len(lat), 2) if lat else None,

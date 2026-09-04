@@ -67,6 +67,8 @@ cd server
 python -m venv .venv
 .venv\Scripts\activate            # Windows;  source .venv/bin/activate on Mac/Linux
 pip install -r requirements.txt
+cp .env.example .env              # then paste your Gemini key into it.
+                                  # No key? It still runs, on the old rules.
 uvicorn app.main:app --reload --port 8000
 
 # 2. demo page (a separate terminal, from the repo root)
@@ -316,5 +318,122 @@ No screenshots and no pixel redaction yet — that arrives in Step 4 alongside
 the on-device models, since both need the same background infrastructure. No
 real AI planner yet (Step 3). Names and addresses need a language model to
 spot reliably, so they're Step 4 too.
+
+---
+
+## Step 3 — A real brain ✅
+
+**Goal:** replace the three hard-coded rules with an actual language model, and
+prove it can do the job while only ever seeing nametags instead of personal
+data.
+
+### What changed
+
+Until now the "planner" was three rules in a fixed order: fill the first empty
+box, then click the first button, then stop. It had no idea what the user
+wanted. Now the server asks **Google Gemini** what to do next.
+
+The difference is easiest to see side by side, on the same page and the same
+goal — *"request Cartosat-3 imagery of Pune district for academic research"*:
+
+| | Old rules | Gemini |
+|---|---|---|
+| First move | typed junk into the **search box** | skipped it — not part of the goal |
+| Satellite dropdown | picked whichever option came first | picked **Cartosat-3**, because the goal said so |
+| Purpose field | typed "academic research" from a lookup table | typed "Academic research on Pune district" |
+| Finishing | stopped after one click | submitted, then confirmed what it had done |
+
+Both fill the Aadhaar box with `[AADHAAR_1]` — that part was already right. The
+new part is that the agent now understands *why* it is filling anything.
+
+### The contract we hand the model
+
+There is one file that contains everything the model is ever told
+(`server/app/planner/prompt.py`), so the question *"what exactly does your
+server know about the redaction?"* has a single, readable answer. It spells out:
+
+- it will never see a CSS selector, only opaque ids like `e3`
+- ids are rebuilt on every look at the page, so it must decide **one** action at
+  a time and never plan ahead on stale ids
+- `[AADHAAR_1]` is a nametag, not a value. It cannot be guessed or unpacked, and
+  the way to fill a personal field is to name the nametag and let the extension
+  swap the real value in locally
+- it must never invent realistic-looking personal data. If a field needs
+  something no nametag covers, it must stop and ask the user
+- the extension independently checks the nametag matches the field before
+  typing, so misdirecting one is pointless
+
+### Treating the model as untrusted
+
+An LLM is a stranger on the internet, so nothing it says is acted on until it
+has been checked. Every reply must survive all of this:
+
+| Check | Why |
+|---|---|
+| The verb is one of the seven | An eighth verb is a bug or an attack |
+| The target id exists **in this capture** | Stops it inventing an element that isn't there |
+| Any nametag it uses was actually offered | Stops it reaching for data the page never had |
+| The typed text contains no real-looking personal data | Stops it fabricating an Aadhaar instead of using the nametag |
+
+Tested against ten deliberately bad replies: all seven bad ones refused, both
+good ones accepted, and ordinary text like "Pune district imagery" still passes
+— the checks aren't just blocking everything.
+
+If a reply fails, the model is told exactly what was wrong and given another
+go. Only if that also fails do we fall back to the old rules.
+
+### It never dies on stage
+
+Three layers, in order: ask the model → retry if the answer was bad or the
+service hiccuped → fall back to the old rule-based planner. The popup prints
+which brain answered, so if it ever quietly drops to the rules mid-demo you can
+see it happen instead of wondering why the agent got stupid.
+
+There is also a switch (`CYCLOPS_PLANNER=stub`) that forces the old rules and
+needs no internet at all, for rehearsing on a venue's wifi.
+
+### Picking the model — worth knowing
+
+We benchmarked eight Gemini models on the real prompt before choosing. This
+mattered far more than expected:
+
+| Model | Worked | Speed |
+|---|---|---|
+| `gemini-3.5-flash-lite` | **3 of 3** | **1.6 s** |
+| `gemini-3.1-flash-lite` | 3 of 3 | 2.5 s |
+| `gemini-3.7-flash` | 1 of 3 | 8.8 s |
+| `gemini-3.8-flash`, `3.6`, `3.5` | 0 of 3 | — |
+
+The big models were constantly busy ("this model is currently experiencing high
+demand") and slow when they did answer — one trivial request took 25 seconds and
+four in five failed. On stage that is three minutes of silence. The small one is
+both the fastest and the only reliable one. **Do not "upgrade" the model without
+re-running that benchmark.**
+
+### Measured
+
+A full eight-step run, start to submitted form:
+
+| | |
+|---|---|
+| Steps planned by the model | **8 of 8** |
+| Falls back to the old rules | **0** |
+| Median thinking time | **1.6 s** per step |
+| Personal data sent to Google | **none** — nametags only |
+
+### One known gap
+
+Asked to fill a "Full name" box, the model makes a name up ("Academic
+Researcher"). It is inventing a fake name rather than leaking a real one, so
+nothing escapes — but a made-up name on a government form is still wrong. Names
+can't be detected reliably without a language model reading the page, which is
+exactly what Step 4 adds; once there is a `[NAME_1]` nametag to reach for, the
+model will use it like it already uses the others.
+
+### Setting it up
+
+Put a Gemini key in `server/.env` (the file is git-ignored, and
+`server/.env.example` shows the shape). With no key, everything still runs on
+the old rules.
 
 ---

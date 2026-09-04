@@ -158,3 +158,6 @@ class Plan(BaseModel):
     steps: list[AnyAction]
     confidence: float = 1.0
     needs_pixels_next: bool = False
+    # Which brain produced this. Shown in the popup trace so a demo can tell
+    # the rule-based stub apart from the real planner at a glance.
+    planner: str = "stub"
