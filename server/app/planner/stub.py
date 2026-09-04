@@ -10,7 +10,7 @@ The rules, in order:
   3. Otherwise declare the task done.
 """
 
-from ..schema import Click, Done, Fill, Plan, SanitizedPayload
+from ..schema import Click, Done, Fill, Plan, SanitizedPayload, Select
 
 TEXT_ROLES = {"textbox"}
 SKIP_INPUT_TYPES = {"hidden", "file", "submit", "button", "reset", "checkbox", "radio"}
@@ -25,6 +25,11 @@ SAMPLES = [
     (("purpose", "reason"), "academic research"),
     (("area", "district", "region"), "Pune district"),
 ]
+
+
+def _is_placeholder(option: str) -> bool:
+    low = option.lower()
+    return low.startswith(("choose", "select", "pick", "--")) or low in {"", "none"}
 
 
 def _sample_for(label: str) -> str:
@@ -58,6 +63,28 @@ def plan(payload: SanitizedPayload) -> Plan:
             ],
             confidence=0.4,
         )
+
+    for el in payload.elements:
+        if el.role != "select" or not el.enabled or not el.options:
+            continue
+        if (el.value or "").strip():
+            continue
+        choice = next((o for o in el.options if o), None)
+        # Skip the usual "Choose one…" placeholder row.
+        if choice and len(el.options) > 1 and _is_placeholder(choice):
+            choice = el.options[1]
+        if choice:
+            return Plan(
+                steps=[
+                    Select(
+                        action="select",
+                        target=el.id,
+                        option=choice,
+                        reason=f'dropdown "{el.label}" is unset',
+                    )
+                ],
+                confidence=0.4,
+            )
 
     if not already_clicked:
         for el in payload.elements:

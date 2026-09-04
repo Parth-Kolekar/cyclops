@@ -16,6 +16,7 @@ export const MSG = {
   RUN_GOAL: 'RUN_GOAL',
   STOP: 'STOP',
   EXTRACT: 'EXTRACT',
+  INSPECT: 'INSPECT',
   EXECUTE: 'EXECUTE',
   TRACE: 'TRACE',
   STATUS: 'STATUS',

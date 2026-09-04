@@ -7,6 +7,7 @@ dist/
 .DS_Store
 eval/report/
 CLAUDE.md
+.claude/
 solution.txt
 SIH-26171-design-doc.pdf
 SIH-26171-design-doc.md

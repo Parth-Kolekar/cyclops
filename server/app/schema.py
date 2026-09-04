@@ -15,6 +15,8 @@ class PageInfo(BaseModel):
     url_host: str = ""
     title: str = ""
     kind: str = "unknown"
+    kind_confidence: float = 0.0
+    kind_source: str = "heuristic"
 
 
 class Viewport(BaseModel):
@@ -23,17 +25,33 @@ class Viewport(BaseModel):
     scroll_x: int = 0
     scroll_y: int = 0
     dpr: float = 1.0
+    norm_width: int = 1024
+    norm_scale: float = 1.0
 
 
 class Element(BaseModel):
     id: str
     role: str
     label: str = ""
+    text: Optional[str] = None
     value: Optional[str] = None
+    # [x, y, w, h] in the normalised 1024px-wide coordinate space
     bbox: list[float] = Field(default_factory=list)
+    visible: bool = True
     enabled: bool = True
+    focused: bool = False
     input_type: Optional[str] = None
+    autocomplete: Optional[str] = None
+    options: Optional[list[str]] = None  # for <select>
     source: Literal["dom", "vision"] = "dom"
+
+
+class OpaqueRegion(BaseModel):
+    """A canvas/img/video the DOM cannot describe — the vision model's job."""
+
+    tag: str
+    bbox: list[float] = Field(default_factory=list)
+    described: bool = False
 
 
 class ActionRecord(BaseModel):
@@ -43,7 +61,7 @@ class ActionRecord(BaseModel):
 
 
 class SanitizedPayload(BaseModel):
-    schema_: str = Field("cyclops.payload.v0", alias="schema")
+    schema_: str = Field("cyclops.payload.v1", alias="schema")
     session_id: str
     step: int = 0
     goal: str = ""
@@ -51,6 +69,7 @@ class SanitizedPayload(BaseModel):
     page: PageInfo = Field(default_factory=PageInfo)
     viewport: Viewport = Field(default_factory=Viewport)
     elements: list[Element] = Field(default_factory=list)
+    opaque_regions: list[OpaqueRegion] = Field(default_factory=list)
     needs_pixels: bool = False
 
     model_config = {"populate_by_name": True}

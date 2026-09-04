@@ -17,28 +17,59 @@
       <span id="server-dot" class="dot" title="server status"></span>
     </header>
 
-    <section class="goal">
-      <textarea
-        id="goal"
-        rows="2"
-        placeholder="What should I do on this page?"
-      ></textarea>
-      <div class="row">
-        <button id="run" class="primary">Run</button>
-        <button id="stop">Stop</button>
+    <nav class="tabs">
+      <button class="tab active" data-tab="agent">Agent</button>
+      <button class="tab" data-tab="vision">Screen graph</button>
+    </nav>
+
+    <!-- ------------------------------------------------------ agent tab -->
+    <section id="panel-agent" class="panel">
+      <div class="goal">
+        <textarea id="goal" rows="2" placeholder="What should I do on this page?"></textarea>
+        <div class="row">
+          <button id="run" class="primary">Run</button>
+          <button id="stop">Stop</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-head">
+          <span>Step trace</span>
+          <span id="state" class="state">idle</span>
+        </div>
+        <ol id="log"></ol>
       </div>
     </section>
 
-    <section class="trace">
-      <div class="trace-head">
-        <span>Step trace</span>
-        <span id="state" class="state">idle</span>
+    <!-- ----------------------------------------------------- vision tab -->
+    <section id="panel-vision" class="panel hidden">
+      <div class="goal">
+        <div class="row">
+          <button id="inspect" class="primary">Scan page</button>
+          <button id="clear-overlay">Clear boxes</button>
+        </div>
+        <p class="hint">
+          Draws a box around everything the agent can see, tagged with the
+          opaque id the server will use to refer to it.
+        </p>
       </div>
-      <ol id="log"></ol>
+
+      <div id="sg-summary" class="stats hidden"></div>
+
+      <div class="block">
+        <div class="block-head">
+          <span>Elements</span>
+          <span id="sg-count" class="state"></span>
+        </div>
+        <div class="filters">
+          <input id="sg-filter" type="text" placeholder="filter by label or role…" />
+        </div>
+        <ol id="sg-list"></ol>
+      </div>
     </section>
 
     <footer>
-      <span id="footnote">phase 0 · dumb loop</span>
+      <span id="footnote">phase 1 · dom perception</span>
     </footer>
 
     <script type="module" src="popup.js"></script>

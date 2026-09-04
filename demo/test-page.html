@@ -2,34 +2,37 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Cyclops — Phase 0 test page</title>
+    <title>Cyclops — perception test page</title>
     <style>
       body {
-        font: 15px/1.5 system-ui, sans-serif;
+        font: 15px/1.55 system-ui, sans-serif;
         background: #f5f7fa;
         color: #111827;
         margin: 0;
-        padding: 48px 24px;
+        padding: 36px 24px 64px;
       }
       .card {
-        max-width: 520px;
+        max-width: 560px;
         margin: 0 auto;
         background: #fff;
         border: 1px solid #e5e7eb;
         border-radius: 14px;
         padding: 28px;
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+        box-shadow: 0 6px 24px rgba(0, 0, 0, .06);
       }
       h1 { margin: 0 0 4px; font-size: 20px; }
-      p.sub { margin: 0 0 24px; color: #6b7280; font-size: 13px; }
+      p.sub { margin: 0 0 20px; color: #6b7280; font-size: 13px; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px;
+           color: #6b7280; margin: 26px 0 10px; }
       label { display: block; margin: 14px 0 4px; font-size: 13px; font-weight: 600; }
-      input, textarea {
+      input, textarea, select {
         width: 100%;
         padding: 9px 11px;
         border: 1px solid #d1d5db;
         border-radius: 8px;
         font: inherit;
         box-sizing: border-box;
+        background: #fff;
       }
       button {
         margin-top: 20px;
@@ -44,30 +47,48 @@
         cursor: pointer;
       }
       #result {
-        margin-top: 18px;
-        padding: 12px;
+        margin-top: 18px; padding: 12px;
         border-radius: 8px;
-        background: #ecfdf5;
-        border: 1px solid #6ee7b7;
-        color: #065f46;
+        background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46;
         display: none;
       }
+      .opaque { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+      canvas, .photo {
+        border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+      }
+      .photo { width: 84px; height: 84px; display: block; }
+      .note { font-size: 12px; color: #6b7280; margin-top: 8px; }
+      a { color: #0891b2; }
+      footer { max-width: 560px; margin: 18px auto 0; font-size: 12px; color: #6b7280; }
     </style>
   </head>
   <body>
     <div class="card">
-      <h1>Phase 0 — does the pipe work?</h1>
+      <h1>Cyclops perception test</h1>
       <p class="sub">
-        The extension should read these fields, ask the server what to do, fill
-        them, and click submit — without anyone touching the keyboard.
+        A deliberately mixed page: labelled fields, a dropdown, a link, plain
+        text, and two regions the DOM cannot describe. Hit <b>Scan page</b> in
+        the extension to see what the agent perceives.
       </p>
 
+      <h2>Data request form</h2>
       <form id="form">
         <label for="fullname">Full name</label>
-        <input id="fullname" name="fullname" type="text" placeholder="Your name" />
+        <input id="fullname" name="fullname" type="text" placeholder="Your name" autocomplete="name" />
 
         <label for="email">Email address</label>
-        <input id="email" name="email" type="email" placeholder="you@example.com" />
+        <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" />
+
+        <label for="mobile">Mobile number</label>
+        <input id="mobile" name="mobile" type="tel" placeholder="10-digit mobile" autocomplete="tel" />
+
+        <label for="satellite">Satellite</label>
+        <select id="satellite" name="satellite">
+          <option value="">Choose a satellite…</option>
+          <option>Cartosat-3</option>
+          <option>Resourcesat-2A</option>
+          <option>Oceansat-3</option>
+        </select>
 
         <label for="purpose">Purpose of request</label>
         <textarea id="purpose" name="purpose" rows="2" placeholder="Why do you need this?"></textarea>
@@ -76,13 +97,45 @@
       </form>
 
       <div id="result">Submitted — the agent drove this form end to end.</div>
+
+      <h2>Regions the DOM can't explain</h2>
+      <div class="opaque">
+        <canvas id="idcard" width="220" height="84"></canvas>
+        <img
+          id="portrait"
+          class="photo"
+          width="84"
+          height="84"
+          src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='84' height='84'%3E%3Crect width='84' height='84' fill='%2394a3b8'/%3E%3Ccircle cx='42' cy='31' r='15' fill='%23e2e8f0'/%3E%3Cpath d='M12 84c0-17 13-27 30-27s30 10 30 27z' fill='%23e2e8f0'/%3E%3C/svg%3E"
+        />
+      </div>
+      <p class="note">
+        The card on the left is drawn on a <code>&lt;canvas&gt;</code> — its
+        text exists only as pixels. Step 4 is what teaches Cyclops to read it.
+        See the <a href="#">data policy</a> for details.
+      </p>
     </div>
+
+    <footer>Served locally · nothing here leaves your machine.</footer>
 
     <script>
       document.getElementById('form').addEventListener('submit', (e) => {
         e.preventDefault();
         document.getElementById('result').style.display = 'block';
       });
+
+      // Canvas content is invisible to the DOM walker by design.
+      const ctx = document.getElementById('idcard').getContext('2d');
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 220, 84);
+      ctx.fillStyle = '#67e8f9';
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.fillText('ISRO RESEARCH PASS', 12, 22);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '13px system-ui, sans-serif';
+      ctx.fillText('R. Sharma', 12, 46);
+      ctx.font = '12px ui-monospace, monospace';
+      ctx.fillText('4321 8765 2109', 12, 66);
     </script>
   </body>
 </html>
