@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+.env
+.DS_Store
+eval/report/
+CLAUDE.md
+solution.txt
+SIH-26171-design-doc.pdf
+SIH-26171-design-doc.md

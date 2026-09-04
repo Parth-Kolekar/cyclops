@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cyclops</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="eye"></span>
+        <div>
+          <h1>Cyclops</h1>
+          <p class="tag">private vision agent</p>
+        </div>
+      </div>
+      <span id="server-dot" class="dot" title="server status"></span>
+    </header>
+
+    <section class="goal">
+      <textarea
+        id="goal"
+        rows="2"
+        placeholder="What should I do on this page?"
+      ></textarea>
+      <div class="row">
+        <button id="run" class="primary">Run</button>
+        <button id="stop">Stop</button>
+      </div>
+    </section>
+
+    <section class="trace">
+      <div class="trace-head">
+        <span>Step trace</span>
+        <span id="state" class="state">idle</span>
+      </div>
+      <ol id="log"></ol>
+    </section>
+
+    <footer>
+      <span id="footnote">phase 0 · dumb loop</span>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

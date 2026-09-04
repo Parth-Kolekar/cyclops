@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cyclops — Phase 0 test page</title>
+    <style>
+      body {
+        font: 15px/1.5 system-ui, sans-serif;
+        background: #f5f7fa;
+        color: #111827;
+        margin: 0;
+        padding: 48px 24px;
+      }
+      .card {
+        max-width: 520px;
+        margin: 0 auto;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 28px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+      }
+      h1 { margin: 0 0 4px; font-size: 20px; }
+      p.sub { margin: 0 0 24px; color: #6b7280; font-size: 13px; }
+      label { display: block; margin: 14px 0 4px; font-size: 13px; font-weight: 600; }
+      input, textarea {
+        width: 100%;
+        padding: 9px 11px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font: inherit;
+        box-sizing: border-box;
+      }
+      button {
+        margin-top: 20px;
+        width: 100%;
+        padding: 11px;
+        border: 0;
+        border-radius: 8px;
+        background: #0891b2;
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      #result {
+        margin-top: 18px;
+        padding: 12px;
+        border-radius: 8px;
+        background: #ecfdf5;
+        border: 1px solid #6ee7b7;
+        color: #065f46;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Phase 0 — does the pipe work?</h1>
+      <p class="sub">
+        The extension should read these fields, ask the server what to do, fill
+        them, and click submit — without anyone touching the keyboard.
+      </p>
+
+      <form id="form">
+        <label for="fullname">Full name</label>
+        <input id="fullname" name="fullname" type="text" placeholder="Your name" />
+
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" placeholder="you@example.com" />
+
+        <label for="purpose">Purpose of request</label>
+        <textarea id="purpose" name="purpose" rows="2" placeholder="Why do you need this?"></textarea>
+
+        <button type="submit">Submit request</button>
+      </form>
+
+      <div id="result">Submitted — the agent drove this form end to end.</div>
+    </div>
+
+    <script>
+      document.getElementById('form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        document.getElementById('result').style.display = 'block';
+      });
+    </script>
+  </body>
+</html>

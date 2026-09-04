@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Cyclops — Private Vision Agent",
+  "version": "0.1.0",
+  "description": "Screen-aware browser agent that sends the server a sanitized description of your screen, never your data.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["http://localhost:8000/*"],
+  "background": {
+    "service_worker": "src/background/sw.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "Cyclops"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/index.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
