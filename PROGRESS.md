@@ -67,8 +67,8 @@ cd server
 python -m venv .venv
 .venv\Scripts\activate            # Windows;  source .venv/bin/activate on Mac/Linux
 pip install -r requirements.txt
-cp .env.example .env              # then paste your Gemini key into it.
-                                  # No key? It still runs, on the old rules.
+cp .env.example .env              # then paste your API keys into it.
+                                  # No keys? It still runs, on the old rules.
 uvicorn app.main:app --reload --port 8000
 
 # 2. demo page (a separate terminal, from the repo root)
@@ -331,12 +331,12 @@ data.
 
 Until now the "planner" was three rules in a fixed order: fill the first empty
 box, then click the first button, then stop. It had no idea what the user
-wanted. Now the server asks **Google Gemini** what to do next.
+wanted. Now the server asks a real language model what to do next.
 
 The difference is easiest to see side by side, on the same page and the same
 goal — *"request Cartosat-3 imagery of Pune district for academic research"*:
 
-| | Old rules | Gemini |
+| | Old rules | The model |
 |---|---|---|
 | First move | typed junk into the **search box** | skipped it — not part of the goal |
 | Satellite dropdown | picked whichever option came first | picked **Cartosat-3**, because the goal said so |
@@ -384,18 +384,25 @@ go. Only if that also fails do we fall back to the old rules.
 
 ### It never dies on stage
 
-Three layers, in order: ask the model → retry if the answer was bad or the
-service hiccuped → fall back to the old rule-based planner. The popup prints
-which brain answered, so if it ever quietly drops to the rules mid-demo you can
-see it happen instead of wondering why the agent got stupid.
+There is no single brain to lose. The server works down a chain until something
+answers:
+
+**DeepSeek** (via OpenRouter) → **Gemini** → **the old rules**
+
+Each provider gets two tries — one, then a repair attempt where it is told
+exactly what was wrong with its answer. If it is still failing, moving to a
+different provider is a better use of the next two seconds than a third go at
+the one that is struggling. The popup prints which brain answered, so if it ever
+quietly drops down the chain mid-demo you can see it happen instead of wondering
+why the agent got stupid.
 
 There is also a switch (`CYCLOPS_PLANNER=stub`) that forces the old rules and
 needs no internet at all, for rehearsing on a venue's wifi.
 
-### Picking the model — worth knowing
+### Why there is a chain at all — worth knowing
 
-We benchmarked eight Gemini models on the real prompt before choosing. This
-mattered far more than expected:
+We benchmarked eight Gemini models on the real prompt before picking one, and
+the result was worse than expected:
 
 | Model | Worked | Speed |
 |---|---|---|
@@ -404,22 +411,34 @@ mattered far more than expected:
 | `gemini-3.7-flash` | 1 of 3 | 8.8 s |
 | `gemini-3.8-flash`, `3.6`, `3.5` | 0 of 3 | — |
 
-The big models were constantly busy ("this model is currently experiencing high
-demand") and slow when they did answer — one trivial request took 25 seconds and
-four in five failed. On stage that is three minutes of silence. The small one is
-both the fastest and the only reliable one. **Do not "upgrade" the model without
-re-running that benchmark.**
+The bigger models were constantly busy — "this model is currently experiencing
+high demand" — and slow when they did answer. One trivial request took 25
+seconds and four in five failed outright. On stage that is three minutes of
+silence.
+
+Even the model that won is on a service that visibly buckles under load, which
+is not something to stake a live demo on. So Gemini became the understudy and
+**DeepSeek V4 Flash** took the lead: it is a tenth of the price, has a far
+larger context window, and is not fighting the same traffic. Two independent
+providers, either of which can carry the demo alone.
+
+**Do not swap either model without re-running the benchmark.** That table is
+the whole reason the architecture looks like this.
 
 ### Measured
 
-A full eight-step run, start to submitted form:
+A full eight-step run against Gemini, start to submitted form:
 
 | | |
 |---|---|
 | Steps planned by the model | **8 of 8** |
 | Falls back to the old rules | **0** |
 | Median thinking time | **1.6 s** per step |
-| Personal data sent to Google | **none** — nametags only |
+| Personal data sent to the provider | **none** — nametags only |
+
+The same run against DeepSeek is **not measured yet** — the key had not been
+added when this was written. The safety checks below are provider-independent
+and were verified.
 
 ### One known gap
 
@@ -432,8 +451,9 @@ model will use it like it already uses the others.
 
 ### Setting it up
 
-Put a Gemini key in `server/.env` (the file is git-ignored, and
-`server/.env.example` shows the shape). With no key, everything still runs on
-the old rules.
+Put an OpenRouter key and a Gemini key in `server/.env` (the file is
+git-ignored, and `server/.env.example` shows the shape). Either one alone is
+enough — the chain just skips whichever provider has no key. With neither,
+everything still runs on the old rules.
 
 ---

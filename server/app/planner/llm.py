@@ -1,18 +1,20 @@
-"""The real planner — Google Gemini over plain REST.
+"""The real planner — OpenRouter first, Gemini as the understudy.
 
-No vendor SDK on purpose. `httpx` was already a dependency, the request shape
-is four keys, and an SDK that changes its API the week before a demo is a risk
-with no upside. Same reasoning as the extension having no bundler.
+No vendor SDKs. `httpx` was already a dependency, both APIs are a handful of
+keys of JSON, and an SDK that changes shape the week before a demo is risk with
+no upside. Same reasoning as the extension having no bundler.
 
-Everything the model returns is treated as hostile until checked:
+Providers are tried in the order given by CYCLOPS_PROVIDERS. OpenRouter leads
+because Gemini's flash fleet returns 503 "experiencing high demand" often enough
+to lose a demo on its own — measured, not assumed. If every provider fails,
+`main.py` drops to the Phase 0 rule stub rather than letting the demo die.
+
+Everything a model returns is treated as hostile until checked:
 
   * the verb must be one of the seven
   * the target must be an id that exists in THIS capture (no hallucinated ids)
   * a placeholder may only be used if the manifest actually offered that kind
   * a fill value must not contain fabricated personal data
-
-A failure raises PlannerError, and `main.py` falls back to the stub rather than
-letting the demo die.
 """
 
 import asyncio
@@ -37,20 +39,22 @@ from ..schema import (
 )
 from . import prompt
 
-API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
+GEMINI_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 PLACEHOLDER_RE = re.compile(r"\[([A-Z][A-Z0-9]*)_(\d+)\]")
 
+# Attempts per provider. Kept low because a second provider is a better use of
+# the next two seconds than a third try at the one that is struggling.
+MAX_ATTEMPTS = 2
 
-MAX_ATTEMPTS = 3
-
-# Transient on Google's side — worth another go. A bad key or a wrong model
-# name is not, and retrying it just burns demo time.
-RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+# Transient on the provider's side — worth another go. A bad key or a wrong
+# model name is not, and retrying it just burns demo time.
+RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
 
 
 class PlannerError(RuntimeError):
-    """The model failed, timed out, or returned something we refuse to act on."""
+    """A model failed, timed out, or returned something we refuse to act on."""
 
     def __init__(self, message: str, retryable: bool = False):
         super().__init__(message)
@@ -58,84 +62,118 @@ class PlannerError(RuntimeError):
 
 
 def _terse(text: str) -> str:
-    """Google's error bodies are six lines of JSON. Keep the sentence."""
+    """Provider error bodies are several lines of JSON. Keep the sentence."""
     try:
-        return json.loads(text)["error"]["message"]
+        body = json.loads(text)
+        err = body.get("error")
+        if isinstance(err, dict):
+            return str(err.get("message", err))[:200]
+        return str(err or body)[:200]
     except Exception:
         return text[:200]
 
 
-# Gemini's structured output handles a flat object far more reliably than a
-# seven-way union, so we ask for one shape with optional fields and rebuild the
-# real typed action ourselves. The wire contract stays frozen at seven verbs.
-RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "action": {
-            "type": "string",
-            "enum": ["click", "fill", "select", "scroll", "navigate", "ask_user", "done"],
-        },
-        # Only three fields can be globally required, so which of the rest are
-        # mandatory is spelled out here per verb. Without this, models happily
-        # emit `select` with no option and burn a retry.
-        "target": {
-            "type": "string",
-            "description": "element id such as e3. REQUIRED for click, fill and select.",
-        },
-        "value": {
-            "type": "string",
-            "description": "the text to type. REQUIRED when action is fill.",
-        },
-        "option": {
-            "type": "string",
-            "description": "exact option text to choose. REQUIRED when action is select.",
-        },
-        "direction": {"type": "string", "enum": ["up", "down", "top", "bottom"]},
-        "host": {"type": "string"},
-        "path": {"type": "string"},
-        "question": {"type": "string"},
-        "summary": {"type": "string"},
-        "reason": {"type": "string", "description": "one short clause, shown to the user"},
-        "confidence": {"type": "number"},
+# ------------------------------------------------------------------ schema
+
+_PROPERTIES = {
+    "action": {
+        "type": "string",
+        "enum": ["click", "fill", "select", "scroll", "navigate", "ask_user", "done"],
     },
-    # JSON Schema cannot express "option is required *when* action is select",
-    # and Gemini treats `required` as the real constraint while descriptions are
-    # close to decorative — four different models all emitted `select` with no
-    # `option`. So every field any verb might need is required outright. Verbs
-    # that do not need one get "" back, and _to_action ignores it.
-    "required": ["action", "target", "value", "option", "reason", "confidence"],
-    # Decide the verb first; the fields that depend on it are then filled in
-    # with the verb already committed to.
-    "propertyOrdering": [
-        "action", "target", "value", "option", "direction",
-        "host", "path", "question", "summary", "reason", "confidence",
-    ],
+    "target": {
+        "type": "string",
+        "description": "element id such as e3. REQUIRED for click, fill and select.",
+    },
+    "value": {
+        "type": "string",
+        "description": "the text to type. REQUIRED when action is fill.",
+    },
+    "option": {
+        "type": "string",
+        "description": "exact option text to choose. REQUIRED when action is select.",
+    },
+    "direction": {"type": "string", "enum": ["up", "down", "top", "bottom"]},
+    "host": {"type": "string"},
+    "path": {"type": "string"},
+    "question": {"type": "string"},
+    "summary": {"type": "string"},
+    "reason": {"type": "string", "description": "one short clause, shown to the user"},
+    "confidence": {"type": "number"},
 }
 
+_ALL_FIELDS = list(_PROPERTIES)
 
-async def _call(system: str, user: str) -> dict:
+# JSON Schema cannot express "option is required *when* action is select", and
+# Gemini treats `required` as the real constraint while descriptions are close
+# to decorative — four different Gemini models all emitted `select` with no
+# `option`. So every field a verb might need is required outright; the verbs
+# that do not need one get "" back and _to_action ignores it.
+GEMINI_SCHEMA = {
+    "type": "object",
+    "properties": _PROPERTIES,
+    "required": ["action", "target", "value", "option", "reason", "confidence"],
+    # Decide the verb first, so the dependent fields are filled with the verb
+    # already committed to.
+    "propertyOrdering": _ALL_FIELDS,
+}
+
+# OpenAI-style strict mode, which OpenRouter forwards, demands that every
+# property be required and that no extras are allowed.
+OPENROUTER_SCHEMA = {
+    "type": "object",
+    "properties": _PROPERTIES,
+    "required": _ALL_FIELDS,
+    "additionalProperties": False,
+}
+
+# Used only when a model cannot do schema-enforced output and we fall back to
+# plain JSON mode, where the shape has to live in the prompt instead.
+SHAPE_HINT = (
+    "\nReply with a single JSON object and nothing else, using exactly these keys:\n"
+    '{"action": one of click|fill|select|scroll|navigate|ask_user|done,\n'
+    ' "target": element id such as "e3" (click, fill, select),\n'
+    ' "value": text to type (fill),\n'
+    ' "option": exact option text (select),\n'
+    ' "direction": up|down|top|bottom (scroll),\n'
+    ' "host": string, "path": string (navigate),\n'
+    ' "question": string (ask_user), "summary": string (done),\n'
+    ' "reason": one short clause, "confidence": number between 0 and 1}\n'
+    "Use \"\" for keys that do not apply to the verb you chose.\n"
+)
+
+# Set once, the first time a model rejects schema-enforced output, so we do not
+# pay for the same 400 on every subsequent step.
+_openrouter_json_mode = "schema"
+
+
+# --------------------------------------------------------------- providers
+
+
+async def _post(url: str, headers: dict, body: dict) -> httpx.Response:
+    try:
+        async with httpx.AsyncClient(timeout=config.LLM_TIMEOUT_S) as client:
+            return await client.post(url, headers=headers, json=body)
+    except httpx.HTTPError as err:
+        # str() on a timeout is usually empty, which makes the log say nothing
+        # at the one moment you need it to speak.
+        raise PlannerError(f"{type(err).__name__}: {err or 'no detail'}", retryable=True)
+
+
+async def _call_gemini(system: str, user: str, model: str) -> dict:
     body = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {
             "temperature": 0.1,
             "responseMimeType": "application/json",
-            "responseSchema": RESPONSE_SCHEMA,
+            "responseSchema": GEMINI_SCHEMA,
         },
     }
-    url = f"{API_ROOT}/{config.GEMINI_MODEL}:generateContent"
-    try:
-        async with httpx.AsyncClient(timeout=config.GEMINI_TIMEOUT_S) as client:
-            resp = await client.post(
-                url,
-                headers={"x-goog-api-key": config.GEMINI_API_KEY},
-                json=body,
-            )
-    except httpx.HTTPError as err:
-        # str() on a timeout is usually empty, which makes the log say nothing
-        # at the one moment you need it to speak.
-        raise PlannerError(f"{type(err).__name__}: {err or 'no detail'}", retryable=True)
-
+    resp = await _post(
+        f"{GEMINI_ROOT}/{model}:generateContent",
+        {"x-goog-api-key": config.GEMINI_API_KEY},
+        body,
+    )
     if resp.status_code != 200:
         raise PlannerError(
             f"gemini {resp.status_code}: {_terse(resp.text)}",
@@ -148,11 +186,87 @@ async def _call(system: str, user: str) -> dict:
     except (KeyError, IndexError):
         reason = (data.get("candidates") or [{}])[0].get("finishReason", "?")
         raise PlannerError(f"gemini returned no usable candidate (finishReason={reason})")
+    return _parse_json(text)
 
+
+async def _call_openrouter(system: str, user: str, model: str) -> dict:
+    global _openrouter_json_mode
+
+    def build(mode: str) -> dict:
+        sys_text = system if mode == "schema" else system + SHAPE_HINT
+        body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": sys_text},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.1,
+        }
+        if mode == "schema":
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "cyclops_action",
+                    "strict": True,
+                    "schema": OPENROUTER_SCHEMA,
+                },
+            }
+        else:
+            body["response_format"] = {"type": "json_object"}
+        return body
+
+    headers = {
+        "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+        # OpenRouter attributes traffic with these; harmless and it keeps the
+        # dashboard readable.
+        "HTTP-Referer": "https://github.com/cyclops-sih",
+        "X-Title": "Cyclops",
+    }
+
+    resp = await _post(OPENROUTER_URL, headers, build(_openrouter_json_mode))
+
+    # Not every model can do schema-enforced output. Drop to plain JSON mode
+    # once and remember, rather than paying for the same 400 on every step.
+    if resp.status_code == 400 and _openrouter_json_mode == "schema":
+        print(f"[llm] {model} rejected json_schema — using json_object from here on")
+        _openrouter_json_mode = "object"
+        resp = await _post(OPENROUTER_URL, headers, build("object"))
+
+    if resp.status_code != 200:
+        raise PlannerError(
+            f"openrouter {resp.status_code}: {_terse(resp.text)}",
+            retryable=resp.status_code in RETRYABLE_STATUS,
+        )
+
+    data = resp.json()
+    # OpenRouter can answer 200 with an error body when an upstream fails.
+    if "error" in data and not data.get("choices"):
+        raise PlannerError(f"openrouter upstream: {_terse(resp.text)}", retryable=True)
     try:
-        return json.loads(text)
+        text = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError):
+        raise PlannerError(f"openrouter returned no usable choice: {_terse(resp.text)}")
+    return _parse_json(text)
+
+
+def _parse_json(text: str) -> dict:
+    text = (text or "").strip()
+    # Some models wrap JSON in a ```json fence despite being asked not to.
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
+    try:
+        raw = json.loads(text)
     except json.JSONDecodeError as err:
-        raise PlannerError(f"gemini returned non-JSON: {err}")
+        raise PlannerError(f"model returned non-JSON: {err}")
+    if not isinstance(raw, dict):
+        raise PlannerError(f"model returned {type(raw).__name__}, expected an object")
+    return raw
+
+
+PROVIDERS = {"openrouter": _call_openrouter, "gemini": _call_gemini}
+
+
+# -------------------------------------------------------------- validation
 
 
 def _check_fill_value(value: str, token_types: set[str]) -> None:
@@ -193,7 +307,7 @@ def _to_action(raw: dict, payload: SanitizedPayload) -> AnyAction:
     if verb == "fill":
         t = target()
         value = raw.get("value")
-        if value is None:
+        if not value:
             raise PlannerError("fill without a value")
         _check_fill_value(value, token_types)
         return Fill(action="fill", target=t, value=value, reason=reason)
@@ -230,40 +344,34 @@ def _to_action(raw: dict, payload: SanitizedPayload) -> AnyAction:
     raise PlannerError(f"{verb!r} is not one of the seven verbs")
 
 
-async def plan(payload: SanitizedPayload) -> Plan:
-    """One action from the model, validated. Raises PlannerError if unusable.
+# -------------------------------------------------------------------- plan
 
-    Deliberately one action at a time: element ids are only stable within a
-    single capture, so a multi-step plan would be built on ids that no longer
-    mean anything by step two.
-    """
-    system = prompt.SYSTEM
-    user = prompt.render(payload)
 
+async def _try_provider(name: str, model: str, payload: SanitizedPayload) -> Plan:
+    call = PROVIDERS[name]
+    base = prompt.render(payload)
+    user = base
     last: PlannerError | None = None
+
     for attempt in range(MAX_ATTEMPTS):
         try:
-            raw = await _call(system, user)
+            raw = await call(prompt.SYSTEM, user, model)
         except PlannerError as err:
             last = err
             if not err.retryable:
                 raise
-            # "This model is currently experiencing high demand" shows up often
-            # enough that surrendering to the stub on the first one would make
-            # the agent look stupid on stage for no reason.
-            print(f"[llm] attempt {attempt + 1}/{MAX_ATTEMPTS}: {err} — retrying")
-            await asyncio.sleep(0.6 * (attempt + 1))
+            print(f"[llm] {name} attempt {attempt + 1}/{MAX_ATTEMPTS}: {err} — retrying")
+            await asyncio.sleep(0.5 * (attempt + 1))
             continue
 
         try:
             action = _to_action(raw, payload)
         except PlannerError as err:
             last = err
-            # Tell it exactly what was wrong and let it correct itself. Cheaper
-            # than dropping to the stub mid-demo.
-            print(f"[llm] attempt {attempt + 1}/{MAX_ATTEMPTS} rejected: {err}")
+            # Tell it exactly what was wrong and let it correct itself.
+            print(f"[llm] {name} attempt {attempt + 1}/{MAX_ATTEMPTS} rejected: {err}")
             user = (
-                f"{prompt.render(payload)}\n"
+                f"{base}\n"
                 f"Your previous answer was rejected: {err}\n"
                 f"Answer again, correctly."
             )
@@ -273,7 +381,29 @@ async def plan(payload: SanitizedPayload) -> Plan:
         return Plan(
             steps=[action],
             confidence=float(confidence) if isinstance(confidence, (int, float)) else 0.8,
-            planner=f"gemini:{config.GEMINI_MODEL}",
+            planner=f"{name}:{model}",
         )
 
-    raise PlannerError(f"gave up after {MAX_ATTEMPTS} attempts — {last}")
+    raise PlannerError(f"{name} gave up after {MAX_ATTEMPTS} attempts — {last}")
+
+
+async def plan(payload: SanitizedPayload) -> Plan:
+    """One action, validated, from the first provider that can supply one.
+
+    Deliberately one action at a time: element ids are only stable within a
+    single capture, so a multi-step plan would be built on ids that no longer
+    mean anything by step two.
+    """
+    providers = config.active_providers()
+    if not providers:
+        raise PlannerError("no provider has an API key")
+
+    last: Exception | None = None
+    for name in providers:
+        try:
+            return await _try_provider(name, config.MODELS[name], payload)
+        except Exception as err:
+            last = err
+            print(f"[llm] {name} unusable — {type(err).__name__}: {err or 'no detail'}")
+
+    raise PlannerError(f"all providers failed ({', '.join(providers)}) — {last}")

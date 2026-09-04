@@ -46,7 +46,7 @@ def health():
     return {
         "ok": True,
         "service": "cyclops",
-        "planner": f"gemini:{config.GEMINI_MODEL}" if config.llm_enabled() else "stub",
+        "planner": config.describe() if config.llm_enabled() else "stub",
         "planner_mode": config.PLANNER_MODE,
         "phase": 3,
         "guard": "enabled",
