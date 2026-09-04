@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bhuvan — Satellite Data Request Portal</title>
+    <style>
+      :root { --ink: #0f172a; --muted: #64748b; --line: #e2e8f0; --brand: #0b5c8f; }
+      * { box-sizing: border-box; }
+      body {
+        font: 15px/1.55 system-ui, "Segoe UI", sans-serif;
+        color: var(--ink); background: #eef2f6; margin: 0; padding: 0 0 60px;
+      }
+      .topbar {
+        background: var(--brand); color: #fff; padding: 12px 28px;
+        display: flex; align-items: center; gap: 14px;
+      }
+      .topbar .logo {
+        width: 30px; height: 30px; border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, #7dd3fc, #0369a1);
+      }
+      .topbar h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+      .topbar small { color: #bae6fd; font-size: 11px; display: block; font-weight: 400; }
+      .wrap { max-width: 940px; margin: 24px auto; padding: 0 20px;
+              display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+      .card {
+        background: #fff; border: 1px solid var(--line); border-radius: 12px;
+        padding: 22px; box-shadow: 0 2px 10px rgba(15, 23, 42, .05);
+      }
+      h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .9px;
+           color: var(--muted); margin: 0 0 16px; }
+      .field { display: flex; justify-content: space-between; gap: 16px;
+               padding: 7px 0; border-bottom: 1px dashed var(--line); }
+      .field:last-child { border-bottom: 0; }
+      .field .k { color: var(--muted); font-size: 13px; }
+      .field .v { font-weight: 600; text-align: right; }
+      .mono { font-family: ui-monospace, "Cascadia Mono", monospace; }
+      label { display: block; margin: 14px 0 4px; font-size: 13px; font-weight: 600; }
+      input, select, textarea {
+        width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1;
+        border-radius: 8px; font: inherit; background: #fff;
+      }
+      button {
+        margin-top: 18px; width: 100%; padding: 11px; border: 0; border-radius: 8px;
+        background: var(--brand); color: #fff; font: inherit; font-weight: 600;
+        cursor: pointer;
+      }
+      .profile-head { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+      .profile-head img { width: 66px; height: 66px; border-radius: 10px; display: block; }
+      .profile-head .n { font-weight: 700; font-size: 16px; }
+      .profile-head .r { color: var(--muted); font-size: 12px; }
+      .note { font-size: 12px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+      .decoy { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+               padding: 12px 14px; margin-top: 14px; }
+      .decoy h3 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+                  letter-spacing: .8px; color: #92400e; }
+      #ok { margin-top: 16px; padding: 12px; border-radius: 8px; background: #ecfdf5;
+            border: 1px solid #6ee7b7; color: #065f46; display: none; }
+      canvas { border: 1px solid var(--line); border-radius: 8px; margin-top: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="logo"></div>
+      <h1>Bhuvan Data Services<small>Indian Space Research Organisation · demo portal</small></h1>
+    </div>
+
+    <div class="wrap">
+      <!-- =================================================== profile ==== -->
+      <div class="card">
+        <h2>Applicant profile</h2>
+
+        <div class="profile-head">
+          <img
+            id="portrait"
+            alt="Profile photograph"
+            src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='66' height='66'%3E%3Crect width='66' height='66' fill='%2394a3b8'/%3E%3Ccircle cx='33' cy='24' r='12' fill='%23e2e8f0'/%3E%3Cpath d='M9 66c0-13 10-21 24-21s24 8 24 21z' fill='%23e2e8f0'/%3E%3C/svg%3E"
+          />
+          <div>
+            <div class="n">Rohit Sharma</div>
+            <div class="r">Indian Institute of Tropical Meteorology, Pune</div>
+          </div>
+        </div>
+
+        <div class="field"><span class="k">Aadhaar number</span><span class="v mono">4321 8765 2109</span></div>
+        <div class="field"><span class="k">PAN</span><span class="v mono">ABCPD1234K</span></div>
+        <div class="field"><span class="k">Mobile</span><span class="v mono">9876543210</span></div>
+        <div class="field"><span class="k">Email</span><span class="v mono">r.sharma@iitm.res.in</span></div>
+        <div class="field"><span class="k">Date of birth</span><span class="v mono">14/03/1991</span></div>
+        <div class="field"><span class="k">Bank IFSC</span><span class="v mono">SBIN0001234</span></div>
+        <div class="field"><span class="k">Institute GSTIN</span><span class="v mono">27AAPFU0939F1ZV</span></div>
+
+        <!-- The DOM cannot see any of this; it is pixels. Step 4's job. -->
+        <canvas id="idcard" width="300" height="96"></canvas>
+
+        <!-- ================================================ decoys ==== -->
+        <div class="decoy">
+          <h3>Not personal data — must NOT be redacted</h3>
+          <div class="field"><span class="k">Order reference</span><span class="v mono">4321 8765 2100</span></div>
+          <div class="field"><span class="k">Consignment no.</span><span class="v mono">9012345678901</span></div>
+          <div class="field"><span class="k">Dataset SKU</span><span class="v mono">CRTS3PAN2024</span></div>
+          <div class="field"><span class="k">Scene ID</span><span class="v mono">4000123456789010</span></div>
+        </div>
+        <p class="note">
+          The order reference above differs from the Aadhaar by a single digit
+          and fails its checksum. A regex-only detector redacts it; a detector
+          that validates does not. That difference is the precision number.
+        </p>
+      </div>
+
+      <!-- ============================================== request form ==== -->
+      <div class="card">
+        <h2>New data request</h2>
+        <form id="req">
+          <label for="applicant">Applicant name</label>
+          <input id="applicant" name="applicant" type="text" autocomplete="name"
+                 placeholder="As per government ID" />
+
+          <label for="aadhaar">Aadhaar number</label>
+          <input id="aadhaar" name="aadhaar" type="text" inputmode="numeric"
+                 placeholder="12-digit Aadhaar" />
+
+          <label for="contact">Mobile number</label>
+          <input id="contact" name="contact" type="tel" autocomplete="tel"
+                 placeholder="10-digit mobile" />
+
+          <label for="satellite">Satellite</label>
+          <select id="satellite" name="satellite">
+            <option value="">Choose a satellite…</option>
+            <option>Cartosat-3</option>
+            <option>Resourcesat-2A</option>
+            <option>Oceansat-3</option>
+          </select>
+
+          <label for="aoi">Area of interest</label>
+          <input id="aoi" name="aoi" type="text" placeholder="District or bounding box" />
+
+          <label for="purpose">Purpose</label>
+          <textarea id="purpose" name="purpose" rows="2"
+                    placeholder="Why is this data needed?"></textarea>
+
+          <label for="search">Search the catalogue</label>
+          <input id="search" name="search" type="search"
+                 placeholder="Free-text search — not a personal-data field" />
+
+          <button type="submit">Submit request</button>
+        </form>
+
+        <div id="ok">Request submitted.</div>
+
+        <p class="note">
+          The <b>Search the catalogue</b> box is the trap. It is not a
+          personal-data field, so the vault must refuse to type an Aadhaar into
+          it even if the server explicitly asks.
+        </p>
+      </div>
+    </div>
+
+    <script>
+      document.getElementById('req').addEventListener('submit', (e) => {
+        e.preventDefault();
+        document.getElementById('ok').style.display = 'block';
+      });
+
+      // An ID card rendered as pixels — invisible to the DOM walker by design.
+      const ctx = document.getElementById('idcard').getContext('2d');
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 300, 96);
+      ctx.fillStyle = '#67e8f9';
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.fillText('ISRO / BHUVAN RESEARCH PASS', 14, 24);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText('Rohit Sharma', 14, 50);
+      ctx.font = '13px ui-monospace, monospace';
+      ctx.fillText('4321 8765 2109', 14, 72);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillText('valid through 2027', 190, 72);
+    </script>
+  </body>
+</html>

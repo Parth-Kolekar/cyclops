@@ -27,6 +27,19 @@ SAMPLES = [
 ]
 
 
+def _token_vocabulary(payload: SanitizedPayload) -> dict[str, str]:
+    """kind -> first placeholder of that kind, e.g. {"aadhaar": "[AADHAAR_1]"}.
+
+    Built from the redaction manifest, which is the server's only knowledge of
+    what the client is holding. We can reference a placeholder; we can never
+    resolve one.
+    """
+    return {
+        kind: f"[{kind.upper()}_1]"
+        for kind in payload.redaction_manifest.token_types
+    }
+
+
 def _is_placeholder(option: str) -> bool:
     low = option.lower()
     return low.startswith(("choose", "select", "pick", "--")) or low in {"", "none"}
@@ -45,6 +58,10 @@ def plan(payload: SanitizedPayload) -> Plan:
         rec.action.get("action") == "click" for rec in payload.history
     )
 
+    # Which placeholders does this page actually offer? The manifest tells us
+    # the vocabulary; we never see, or need, the values behind them.
+    available = _token_vocabulary(payload)
+
     for el in payload.elements:
         if el.role not in TEXT_ROLES or not el.enabled:
             continue
@@ -52,6 +69,23 @@ def plan(payload: SanitizedPayload) -> Plan:
             continue
         if (el.value or "").strip():
             continue  # already filled
+
+        # The mechanic that matters: a field detected as being *for* an
+        # Aadhaar gets asked for by placeholder. The client resolves it from
+        # the vault; we never learn the number.
+        if el.pii_expects and el.pii_expects in available:
+            return Plan(
+                steps=[
+                    Fill(
+                        action="fill",
+                        target=el.id,
+                        value=available[el.pii_expects],
+                        reason=f'"{el.label}" wants the user\'s {el.pii_expects}',
+                    )
+                ],
+                confidence=0.6,
+            )
+
         return Plan(
             steps=[
                 Fill(

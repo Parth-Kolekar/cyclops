@@ -29,6 +29,28 @@ class Viewport(BaseModel):
     norm_scale: float = 1.0
 
 
+class PiiAnnotation(BaseModel):
+    """Says *that* an element holds PII and of what kind. Never the value."""
+
+    kind: str
+    confidence: float = 0.0
+    detector: str = "regex"
+
+
+class RedactionManifest(BaseModel):
+    """Tells the server what vocabulary of placeholders to expect.
+
+    This is what satisfies "the server should be aware of the redaction scheme
+    and process data accordingly" — the prompt is templated with it.
+    """
+
+    scheme: str = "cyclops.redact.v1"
+    token_types: list[str] = Field(default_factory=list)
+    counts: dict[str, int] = Field(default_factory=dict)
+    regions_masked: int = 0
+    method: Literal["opaque_fill", "blur", "mixed"] = "opaque_fill"
+
+
 class Element(BaseModel):
     id: str
     role: str
@@ -44,6 +66,11 @@ class Element(BaseModel):
     autocomplete: Optional[str] = None
     options: Optional[list[str]] = None  # for <select>
     source: Literal["dom", "vision"] = "dom"
+    # This element currently holds PII (already replaced by a placeholder).
+    pii: Optional[PiiAnnotation] = None
+    # This element is a field *for* PII of this kind, whether or not it holds
+    # any yet. Drives both planning and the vault's kind-compatibility check.
+    pii_expects: Optional[str] = None
 
 
 class OpaqueRegion(BaseModel):
@@ -61,7 +88,7 @@ class ActionRecord(BaseModel):
 
 
 class SanitizedPayload(BaseModel):
-    schema_: str = Field("cyclops.payload.v1", alias="schema")
+    schema_: str = Field("cyclops.payload.v2", alias="schema")
     session_id: str
     step: int = 0
     goal: str = ""
@@ -70,6 +97,7 @@ class SanitizedPayload(BaseModel):
     viewport: Viewport = Field(default_factory=Viewport)
     elements: list[Element] = Field(default_factory=list)
     opaque_regions: list[OpaqueRegion] = Field(default_factory=list)
+    redaction_manifest: RedactionManifest = Field(default_factory=RedactionManifest)
     needs_pixels: bool = False
 
     model_config = {"populate_by_name": True}

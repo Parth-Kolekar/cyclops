@@ -20,6 +20,7 @@
     <nav class="tabs">
       <button class="tab active" data-tab="agent">Agent</button>
       <button class="tab" data-tab="vision">Screen graph</button>
+      <button class="tab" data-tab="privacy">Privacy</button>
     </nav>
 
     <!-- ------------------------------------------------------ agent tab -->
@@ -68,8 +69,42 @@
       </div>
     </section>
 
+    <!-- ---------------------------------------------------- privacy tab -->
+    <section id="panel-privacy" class="panel hidden">
+      <div class="goal">
+        <div class="row">
+          <button id="audit" class="primary">Show what leaves</button>
+          <button id="clear-vault">Clear vault</button>
+        </div>
+        <p class="hint">
+          Blacks out every detected identifier on the page and shows the exact
+          payload that would go to the server.
+        </p>
+      </div>
+
+      <div id="pv-stats" class="stats hidden"></div>
+
+      <div class="block">
+        <div class="block-head">
+          <span>On screen → what we send</span>
+          <span id="pv-count" class="state"></span>
+        </div>
+        <ol id="pv-list"></ol>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><span>Token vault (on this device only)</span></div>
+        <ol id="pv-vault"></ol>
+      </div>
+
+      <details class="raw">
+        <summary>Raw outbound payload</summary>
+        <pre id="pv-json"></pre>
+      </details>
+    </section>
+
     <footer>
-      <span id="footnote">phase 1 · dom perception</span>
+      <span id="footnote">phase 2 · privacy filter</span>
     </footer>
 
     <script type="module" src="popup.js"></script>

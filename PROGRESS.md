@@ -179,9 +179,142 @@ step 6: done
 Final state: every field filled, dropdown set, form submitted. Nobody touched
 the keyboard.
 
+---
+
+## Step 2 — The privacy filter ✅
+
+**Goal:** stop personal data leaving the machine, while still letting the task
+get done. This step covers two rubric lines worth 40% between them — how well
+we *find* personal data, and how precisely we *destroy* it.
+
+### The idea the whole project rests on
+
+Most tools would delete the Aadhaar number and send a blank. Then the server
+can't fill the form, and the task fails.
+
+Instead we **swap it for a nametag**. The screen says `4321 8765 2109`; the
+server receives `[AADHAAR_1]`. The real number stays on your laptop in a
+"vault". The server can say *"put `[AADHAAR_1]` in the Aadhaar box"* — it can
+reason about the field perfectly well without ever knowing the number. Cyclops
+swaps the real value back in locally, at the last moment, and the form gets
+filled correctly.
+
+**The task completes with real data, and the server provably never had it.**
+
+### Finding the personal data
+
+Three kinds of detector:
+
+1. **Pattern + real checksum.** A regex alone is not good enough — plenty of
+   order numbers look like an Aadhaar. So every match is *verified*: Aadhaar
+   against the Verhoeff checksum it actually uses, card numbers against Luhn,
+   GSTIN against its base-36 check digit, PAN against the letter that encodes
+   holder type, IFSC against its mandatory zero. This is the single biggest
+   reason our false-positive count is zero.
+2. **What the field is for.** A password box is personal data whatever it
+   contains. A box labelled "Aadhaar number" is an Aadhaar box even when empty.
+   Read from `input` types, `autocomplete` attributes, and a keyword list.
+3. **The neighbourhood.** `14/03/1991` is just a date. `14/03/1991` in a row
+   labelled "Date of birth" is personal data. We read the surrounding text to
+   decide.
+
+**The confidence rule, stated plainly:** checksum passes → certain (0.98).
+Pattern matches and a nearby label backs it up → probable (0.75). Pattern
+matches with nothing supporting it → **ignored**. That last line is what stops
+us blacking out order references, and it is why the precision number holds up.
+
+We deliberately lean towards over-detecting. A privacy tool that leaks 5% of
+personal data is worthless; one that hides 5% too much is mildly annoying.
+
+### Destroying it precisely
+
+For text inside a paragraph we measure the exact pixels of the matched
+characters and black out only those — not the whole sentence. Boxes are grown
+by 4px, because covering slightly too much costs almost nothing while covering
+slightly too little is a privacy failure.
+
+Text is **filled in solid black, never blurred**. A blur is mathematically
+reversible; deleting the pixels is not. A judge will ask this.
+
+### The vault
+
+Real values live in browser session memory — never written to disk, never
+synced, gone when the browser closes, and unreachable from the webpage itself.
+Only the extension's background worker can touch it.
+
+**The rule that matters:** a nametag only goes back into a box of the matching
+kind. If a hostile server says *"type `[AADHAAR_1]` into the search box"*,
+Cyclops refuses and logs why. This is the answer to *"what if your server is
+malicious?"* — and it's a live demo, not a claim.
+
+### Proving it
+
+- **Privacy tab** in the popup, with a **Show what leaves** button. It blacks
+  out every identifier on the page and shows a side-by-side list: the real
+  value on the left in red, the nametag that replaced it on the right in green.
+  Under that, the vault (values masked), and the complete raw payload.
+  The sentence to say on stage: *"this is every byte that left the machine."*
+- **Two independent checks.** Before sending, the extension re-reads its own
+  finished payload and refuses to send if any known-sensitive value survived.
+  Then the server *independently* re-scans everything it receives, using a
+  separately written detector, and rejects the request outright on any hit.
+  That produces the counter for the results slide:
+  **payloads processed: N · personal data seen by server: 0.**
+
+### The demo page
+
+`demo/portal.html` — a mock ISRO/Bhuvan data-request portal. A profile with a
+real-format Aadhaar, PAN, mobile, email, date of birth, IFSC and GSTIN, and a
+request form to be filled from it.
+
+It also contains **deliberate traps**:
+
+- an order reference `4321 8765 2100` — identical to the Aadhaar but for one
+  digit, and it fails the checksum. A regex-only detector redacts it; ours
+  doesn't.
+- a 13-digit consignment number, a product code shaped like a PAN, and a scene
+  ID shaped like a card number.
+- a **search box**, which is not a personal-data field — the trap for the
+  malicious-server demo.
+
+### Measured
+
+Ran the real detectors against the portal in a headless browser:
+
+| | |
+|---|---|
+| Personal data found | **7 / 7** — recall **1.00** |
+| Decoys wrongly flagged | **0 / 4** — precision **1.00** |
+| Detection time | **5.5 ms** |
+| Values surviving into the payload | **0** |
+| Server guard on a clean payload | accepted |
+| Server guard on a tampered payload | **rejected, HTTP 422** |
+
+And the vault's kind rule:
+
+```
+ALLOW   aadhaar -> Aadhaar field
+REFUSE  aadhaar -> search box      "Search the catalogue" is not an aadhaar field
+REFUSE  aadhaar -> Mobile field    field expects phone, token is aadhaar
+ALLOW   phone   -> Mobile field
+```
+
+### Two bugs the testing caught
+
+Worth recording because both would have been embarrassing live:
+
+1. Every value was being detected **twice** — a row like
+   `<div><span>Aadhaar</span><span>4321…</span></div>` was counted as three
+   overlapping pieces of text. Now only the innermost is kept.
+2. The date of birth **leaked**. It was recognised in the full row but not in
+   the bare `<span>` holding just the digits, so one copy went unredacted.
+   Fixed by reading the surrounding text when deciding what a value is.
+
 ### Not built yet (on purpose)
 
-No screenshots, no PII detection, no redaction, no token vault, no real AI, no
-on-device models. That's Steps 2–4.
+No screenshots and no pixel redaction yet — that arrives in Step 4 alongside
+the on-device models, since both need the same background infrastructure. No
+real AI planner yet (Step 3). Names and addresses need a language model to
+spot reliably, so they're Step 4 too.
 
 ---

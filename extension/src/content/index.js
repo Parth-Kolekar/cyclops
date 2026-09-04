@@ -1,8 +1,8 @@
 /**
  * Cyclops content script — message bus.
  *
- * Loaded last, after extractor.js / executor.js / overlay.js have populated
- * window.CYCLOPS. This file does routing and nothing else.
+ * Loaded last, after extractor.js / pii.js / executor.js / overlay.js have
+ * populated window.CYCLOPS. This file does routing and nothing else.
  *
  * Content scripts are classic scripts, not ES modules, so message type strings
  * are duplicated from lib/config.js. Keep them in sync.
@@ -12,14 +12,15 @@
   if (window.__CYCLOPS_BUS__) return;   // guard against double injection
   window.__CYCLOPS_BUS__ = true;
 
-  const C = window.CYCLOPS;
-
   // If the other content modules didn't load, say so loudly rather than
   // failing with an undefined-is-not-a-function deep in a handler. Checked per
   // message, not once at load: a re-injection can fill the gaps later.
-  const missing = () => ['extract', 'execute', 'overlay'].filter((k) => !window.CYCLOPS?.[k]);
+  const missing = () =>
+    ['extract', 'execute', 'overlay', 'pii'].filter((k) => !window.CYCLOPS?.[k]);
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    const C = window.CYCLOPS;
+
     const gaps = missing();
     if (gaps.length) {
       sendResponse({ ok: false, error: `content modules missing: ${gaps.join(', ')} — reload the tab` });
@@ -29,25 +30,28 @@
     switch (msg.type) {
       case 'PING':
         // Keep in sync with CONTENT_VERSION in background/sw.js.
-        sendResponse({ ok: true, version: 2 });
+        sendResponse({ ok: true, version: 3 });
         return false;
 
       case 'EXTRACT': {
         try {
-          sendResponse({ ok: true, graph: C.extract() });
+          const graph = C.extract();
+          // Detection runs here, while we still have the DOM — that's what
+          // lets us box the exact characters rather than the whole paragraph.
+          C.pii.annotate(graph, C.nodeFor);
+          sendResponse({ ok: true, graph });
         } catch (err) {
           sendResponse({ ok: false, error: String(err.message || err) });
         }
         return false;
       }
 
-      // Scan + draw the overlay, used by the popup's Inspect button.
-      case 'INSPECT': {
+      // Draw the overlay from a graph the worker has already tokenised, so
+      // the labels on screen are the same tokens the server will receive.
+      case 'OVERLAY_SHOW': {
         try {
-          const graph = C.extract();
-          if (msg.show === false) C.overlay.hide();
-          else C.overlay.show(graph);
-          sendResponse({ ok: true, graph });
+          C.overlay.show(msg.graph, msg.mode);
+          sendResponse({ ok: true });
         } catch (err) {
           sendResponse({ ok: false, error: String(err.message || err) });
         }

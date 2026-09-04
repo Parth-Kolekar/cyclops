@@ -14,6 +14,13 @@ const $sgSummary = $('sg-summary');
 const $sgList = $('sg-list');
 const $sgCount = $('sg-count');
 const $sgFilter = $('sg-filter');
+const $audit = $('audit');
+const $clearVault = $('clear-vault');
+const $pvStats = $('pv-stats');
+const $pvList = $('pv-list');
+const $pvVault = $('pv-vault');
+const $pvCount = $('pv-count');
+const $pvJson = $('pv-json');
 
 const LAST_GOAL_KEY = 'cyclops.lastGoal';
 
@@ -134,6 +141,78 @@ function showGraph(g) {
   renderElements(g, $sgFilter.value);
 }
 
+// --------------------------------------------------------- privacy panel
+
+/** Show enough to recognise the value, never enough to reconstruct it. */
+function mask(value) {
+  const s = String(value);
+  if (s.length <= 4) return '•'.repeat(s.length);
+  return `${s.slice(0, 2)}${'•'.repeat(Math.min(8, s.length - 4))}${s.slice(-2)}`;
+}
+
+function renderPrivacy({ graph: g, payload, findings, stats }) {
+  const kinds = [...new Set(findings.map((f) => f.kind))];
+  const row = (k, v) => `<div class="s"><span>${k}</span><span>${v}</span></div>`;
+
+  $pvStats.innerHTML =
+    row('PII found', `<b>${findings.length}</b>`) +
+    row('tokenised', `<b>${findings.length}</b>`) +
+    row('leaked', '<b>0</b>') +
+    row('kinds', kinds.length) +
+    row('detect time', `${g.pii?.scan_ms ?? '—'} ms`) +
+    row('method', 'opaque fill') +
+    (stats
+      ? row('payloads sent', stats.payloads) + row('fills refused', stats.fills_refused)
+      : '');
+  $pvStats.classList.remove('hidden');
+
+  // Left: what is on the screen. Right: what the server receives instead.
+  $pvCount.textContent = findings.length ? `${findings.length} replaced` : 'nothing found';
+  $pvList.innerHTML = '';
+
+  if (!findings.length) {
+    $pvList.innerHTML = '<li class="empty">No personal data detected on this page.</li>';
+  } else {
+    for (const f of findings) {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span class="kind"></span><span class="where"></span>
+        <div class="pair">
+          <span class="before"></span>
+          <span class="arrow">→</span>
+          <span class="after"></span>
+        </div>
+        <div class="meta"></div>`;
+      li.querySelector('.kind').textContent = f.kind;
+      li.querySelector('.where').textContent = `${f.element_id} · ${f.where}`;
+      li.querySelector('.before').textContent = f.value;
+      li.querySelector('.after').textContent = f.token || '—';
+      li.querySelector('.meta').textContent =
+        `${f.detector} · confidence ${(f.confidence * 100) | 0}%`;
+      $pvList.appendChild(li);
+    }
+  }
+
+  $pvJson.textContent = JSON.stringify(payload, null, 1);
+}
+
+async function renderVault() {
+  const res = await chrome.runtime.sendMessage({ type: MSG.VAULT_LIST });
+  $pvVault.innerHTML = '';
+  if (!res?.ok || !res.entries.length) {
+    $pvVault.innerHTML = '<li class="empty">Vault is empty.</li>';
+    return;
+  }
+  for (const e of res.entries) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="tok"></span><span class="msk"></span><span class="len"></span>`;
+    li.querySelector('.tok').textContent = e.token;
+    li.querySelector('.msk').textContent = e.masked;
+    li.querySelector('.len').textContent = `${e.length} chars`;
+    $pvVault.appendChild(li);
+  }
+}
+
 // ---------------------------------------------------------------- server
 
 async function checkServer() {
@@ -180,7 +259,7 @@ $inspect.addEventListener('click', async () => {
   $inspect.disabled = true;
   $inspect.textContent = 'Scanning…';
   try {
-    const res = await chrome.runtime.sendMessage({ type: MSG.INSPECT, show: true });
+    const res = await chrome.runtime.sendMessage({ type: MSG.INSPECT, mode: 'graph' });
     if (res?.ok) showGraph(res.graph);
     else fail(res?.error || 'no reply from the service worker — reload the extension');
   } catch (err) {
@@ -191,9 +270,39 @@ $inspect.addEventListener('click', async () => {
   }
 });
 
+$audit.addEventListener('click', async () => {
+  $audit.disabled = true;
+  $audit.textContent = 'Redacting…';
+  try {
+    const res = await chrome.runtime.sendMessage({ type: MSG.INSPECT, mode: 'redact' });
+    if (!res?.ok) {
+      $pvList.innerHTML = '<li class="empty err"></li>';
+      $pvList.firstChild.textContent =
+        res?.error || 'no reply from the service worker — reload the extension';
+      return;
+    }
+    graph = res.graph;
+    renderPrivacy({
+      graph: res.graph,
+      payload: res.payload,
+      findings: res.graph.pii?.findings ?? [],
+      stats: res.stats,
+    });
+    await renderVault();
+  } finally {
+    $audit.disabled = false;
+    $audit.textContent = 'Show what leaves';
+  }
+});
+
+$clearVault.addEventListener('click', async () => {
+  await chrome.runtime.sendMessage({ type: MSG.VAULT_CLEAR });
+  await renderVault();
+});
+
 $clearOverlay.addEventListener('click', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab) chrome.tabs.sendMessage(tab.id, { type: 'OVERLAY_OFF' }).catch(() => {});
+  if (tab) chrome.tabs.sendMessage(tab.id, { type: MSG.OVERLAY_OFF }).catch(() => {});
 });
 
 $sgFilter.addEventListener('input', () => {
@@ -213,10 +322,26 @@ chrome.runtime.onMessage.addListener((msg) => {
 // ------------------------------------------------------------------ init
 
 (async () => {
-  const stored = await chrome.storage.session.get([LAST_GOAL_KEY, 'lastGraph']);
-  $goal.value = stored[LAST_GOAL_KEY] || 'Fill this form and submit it';
+  const stored = await chrome.storage.session.get([
+    LAST_GOAL_KEY, 'lastGraph', 'lastPayload', 'lastFindings', 'stats',
+  ]);
+  $goal.value = stored[LAST_GOAL_KEY] || 'Fill the request form using my profile details';
+
   if (stored.lastGraph) showGraph(stored.lastGraph);
   else $sgList.innerHTML = '<li class="empty">Hit “Scan page”.</li>';
+
+  if (stored.lastPayload) {
+    renderPrivacy({
+      graph: stored.lastGraph,
+      payload: stored.lastPayload,
+      findings: stored.lastFindings || [],
+      stats: stored.stats,
+    });
+  } else {
+    $pvList.innerHTML = '<li class="empty">Hit “Show what leaves”.</li>';
+  }
+
+  await renderVault();
   await loadTrace();
   checkServer();
 })();

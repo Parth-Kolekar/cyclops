@@ -9,6 +9,7 @@
   --err: #f87171;
   --warn: #fbbf24;
   --violet: #a78bfa;
+  --pii: #f43f5e;
 }
 
 * { box-sizing: border-box; }
@@ -170,6 +171,73 @@ ol#sg-list { max-height: 226px; overflow-y: auto; }
 
 .empty { color: var(--muted); font-style: italic; padding: 4px 0; }
 .empty.err { color: var(--err); font-style: normal; line-height: 1.4; }
+
+/* -------------------------------------------------------- privacy tab */
+
+#log li.redact, #log li.vault { border-left-color: var(--pii); }
+#log li.blocked { border-left-color: var(--warn); }
+#log li.blocked .t { color: var(--warn); }
+
+ol#pv-list, ol#pv-vault { max-height: 200px; overflow-y: auto; }
+
+#pv-list li {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--pii);
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+#pv-list .kind {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .7px;
+  color: var(--pii); font-weight: 700;
+}
+#pv-list .where { font-size: 9px; color: var(--muted); float: right; }
+#pv-list .pair { display: flex; align-items: center; gap: 7px; margin-top: 4px; }
+#pv-list .before {
+  flex: 1; min-width: 0;
+  font: 11px ui-monospace, monospace;
+  background: #2a1116; color: #fca5a5;
+  border: 1px solid #4c1d24; border-radius: 4px;
+  padding: 3px 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#pv-list .arrow { color: var(--muted); flex: none; font-size: 11px; }
+#pv-list .after {
+  flex: 1; min-width: 0;
+  font: 600 11px ui-monospace, monospace;
+  background: #06231c; color: #6ee7b7;
+  border: 1px solid #0f4436; border-radius: 4px;
+  padding: 3px 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#pv-list .meta { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+#pv-vault li {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 9px;
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11px;
+}
+#pv-vault .tok { font: 600 10px ui-monospace, monospace; color: var(--accent); flex: none; }
+#pv-vault .msk { font-family: ui-monospace, monospace; color: var(--muted); flex: 1; }
+#pv-vault .len { color: var(--muted); font-size: 10px; }
+
+.raw { margin: 0 14px 14px; }
+.raw summary {
+  cursor: pointer; color: var(--muted);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .8px;
+  padding: 6px 0;
+}
+.raw summary:hover { color: var(--text); }
+.raw pre {
+  margin: 0;
+  max-height: 220px; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 9px; font: 10px/1.45 ui-monospace, monospace; color: #a5b4c4;
+  white-space: pre-wrap; word-break: break-all;
+}
 
 /* ------------------------------------------------------------- footer */
 

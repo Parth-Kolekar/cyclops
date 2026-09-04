@@ -246,7 +246,7 @@ window.CYCLOPS = window.CYCLOPS || {};
 
     // ---- 1. gather candidates
     const seen = new Set();
-    const cands = [];
+    let cands = [];
 
     const consider = (el) => {
       if (seen.has(el)) return;
@@ -271,6 +271,17 @@ window.CYCLOPS = window.CYCLOPS || {};
     }
 
     // ---- 2. dedupe, rank, cap
+    //
+    // A row like `<div><span>Aadhaar</span><span>4321…</span></div>` yields
+    // three text candidates, and the outer one repeats the inner ones. Keep
+    // only the innermost, or every value gets detected — and counted — twice.
+    const rawCandidates = cands.length;
+    const textCands = cands.filter((c) => c.role === 'text');
+    cands = cands.filter((c) =>
+      c.role !== 'text' ||
+      !textCands.some((o) => o.el !== c.el && c.el.contains(o.el))
+    );
+
     let kept = dedupeNested(cands);
     const afterDedupe = kept.length;
     kept.forEach((c) => { c.score = score(c); });
@@ -343,8 +354,8 @@ window.CYCLOPS = window.CYCLOPS || {};
       elements,
       opaque_regions,
       stats: {
-        candidates: cands.length,
-        merged_by_dedupe: cands.length - afterDedupe,
+        candidates: rawCandidates,
+        merged_by_dedupe: rawCandidates - afterDedupe,
         emitted: elements.length,
         dropped_by_cap: overflow,
         extract_ms: +(performance.now() - t0).toFixed(1),
