@@ -70,6 +70,20 @@ async function getActiveTab() {
   return tab;
 }
 
+async function ensureOffscreenDocument() {
+  const offscreenUrl = chrome.runtime.getURL('src/offscreen/vision.html');
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [offscreenUrl]
+  });
+  if (existingContexts.length > 0) return;
+  await chrome.offscreen.createDocument({
+    url: 'src/offscreen/vision.html',
+    reasons: ['WORKERS'],
+    justification: 'Run ONNX/WebGPU inference for visual redaction'
+  });
+}
+
 /** Perceive the page and turn it into something safe to send. */
 async function perceive(tabId, { goal, step, history }) {
   const t0 = performance.now();
@@ -81,6 +95,25 @@ async function perceive(tabId, { goal, step, history }) {
 
   const t1 = performance.now();
   const { elements, manifest, findings, assignments } = await sanitise(graph);
+
+  // Capture screenshot and redact visually
+  let image_base64 = null;
+  try {
+    const rawScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
+    await ensureOffscreenDocument();
+    const redactRes = await chrome.runtime.sendMessage({
+      type: 'REDACT_IMAGE',
+      imageUri: rawScreenshot,
+      findings: findings,
+      viewport: graph.viewport
+    });
+    if (redactRes && redactRes.ok) {
+      image_base64 = redactRes.imageUri;
+    }
+  } catch (err) {
+    console.error("Screenshot or visual redaction failed:", err);
+  }
+
   const sanitiseMs = performance.now() - t1;
 
   const payload = {
@@ -95,6 +128,7 @@ async function perceive(tabId, { goal, step, history }) {
     opaque_regions: graph.opaque_regions,
     redaction_manifest: manifest,
     needs_pixels: false,
+    image_base64
   };
 
   // Last line of defence before the bytes exist on the wire.

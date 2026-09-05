@@ -1,0 +1,18 @@
+{
+  "name": "extension",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm && cp node_modules/onnxruntime-web/dist/ort-wasm*.wasm node_modules/onnxruntime-web/dist/ort-wasm*.mjs dist/",
+    "watch": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "esbuild": "^0.28.2"
+  }
+}

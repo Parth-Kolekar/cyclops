@@ -159,10 +159,10 @@ async def _post(url: str, headers: dict, body: dict) -> httpx.Response:
         raise PlannerError(f"{type(err).__name__}: {err or 'no detail'}", retryable=True)
 
 
-async def _call_gemini(system: str, user: str, model: str) -> dict:
+async def _call_gemini(system: str, user: str, model: str, image_base64: str | None = None) -> dict:
     body = {
         "system_instruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "contents": [{"role": "user", "parts": [{"text": user}] + ([{"inlineData": {"mimeType": "image/jpeg", "data": image_base64.split(",")[1] if "," in image_base64 else image_base64}}] if image_base64 else [])}],
         "generationConfig": {
             "temperature": 0.1,
             "responseMimeType": "application/json",
@@ -189,7 +189,7 @@ async def _call_gemini(system: str, user: str, model: str) -> dict:
     return _parse_json(text)
 
 
-async def _call_openrouter(system: str, user: str, model: str) -> dict:
+async def _call_openrouter(system: str, user: str, model: str, image_base64: str | None = None) -> dict:
     global _openrouter_json_mode
 
     def build(mode: str) -> dict:
@@ -198,7 +198,10 @@ async def _call_openrouter(system: str, user: str, model: str) -> dict:
             "model": model,
             "messages": [
                 {"role": "system", "content": sys_text},
-                {"role": "user", "content": user},
+                {"role": "user", "content": user if not image_base64 else [
+                    {"type": "text", "text": user},
+                    {"type": "image_url", "image_url": {"url": image_base64}}
+                ]},
             ],
             "temperature": 0.1,
         }
@@ -355,7 +358,7 @@ async def _try_provider(name: str, model: str, payload: SanitizedPayload) -> Pla
 
     for attempt in range(MAX_ATTEMPTS):
         try:
-            raw = await call(prompt.SYSTEM, user, model)
+            raw = await call(prompt.SYSTEM, user, model, payload.image_base64)
         except PlannerError as err:
             last = err
             if not err.retryable:

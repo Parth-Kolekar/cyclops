@@ -193,7 +193,18 @@ function renderPrivacy({ graph: g, payload, findings, stats }) {
     }
   }
 
-  $pvJson.textContent = JSON.stringify(payload, null, 1);
+  const payloadCopy = { ...payload };
+  if (payload.image_base64) {
+    const $container = $('pv-screenshot-container');
+    const $img = $('pv-screenshot');
+    $img.src = payload.image_base64;
+    $container.style.display = 'block';
+    payloadCopy.image_base64 = "[REDACTED_IMAGE_DATA_HIDDEN_FROM_UI]";
+  } else {
+    $('pv-screenshot-container').style.display = 'none';
+  }
+  
+  $pvJson.textContent = JSON.stringify(payloadCopy, null, 1);
 }
 
 async function renderVault() {

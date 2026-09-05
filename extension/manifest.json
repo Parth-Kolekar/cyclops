@@ -3,10 +3,13 @@
   "name": "Cyclops — Private Vision Agent",
   "version": "0.1.0",
   "description": "Screen-aware browser agent that sends the server a sanitized description of your screen, never your data.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
-  "host_permissions": ["http://localhost:8000/*"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "offscreen"],
+  "host_permissions": ["http://localhost:8000/*", "https://huggingface.co/*", "https://cdn-lfs.huggingface.co/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' http://localhost:8000 https://huggingface.co https://*.huggingface.co https://*.hf.co blob: data:;"
+  },
   "background": {
-    "service_worker": "src/background/sw.js",
+    "service_worker": "dist/background/sw.js",
     "type": "module"
   },
   "action": {

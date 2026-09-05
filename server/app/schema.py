@@ -99,6 +99,7 @@ class SanitizedPayload(BaseModel):
     opaque_regions: list[OpaqueRegion] = Field(default_factory=list)
     redaction_manifest: RedactionManifest = Field(default_factory=RedactionManifest)
     needs_pixels: bool = False
+    image_base64: Optional[str] = None
 
     model_config = {"populate_by_name": True}
 
