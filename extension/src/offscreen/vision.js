@@ -26,8 +26,11 @@ async function getDetector() {
   
   isInitializing = true;
   try {
-    // Let Transformers.js automatically select WebGPU, falling back to CPU (WASM) if not available
-    detectorPipeline = await pipeline('object-detection', 'Xenova/detr-resnet-50');
+    // Let Transformers.js automatically select WebGPU, falling back to CPU (WASM) if not available.
+    // yolos-tiny over detr-resnet-50: same 91 COCO labels (so `person` still
+    // works) but ~6.5M params against ~41M, which is the difference between a
+    // download that finishes on venue wifi and one that does not.
+    detectorPipeline = await pipeline('object-detection', 'Xenova/yolos-tiny');
   } catch (err) {
     console.error("Failed to load model:", err);
   }

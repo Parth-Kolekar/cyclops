@@ -24,6 +24,16 @@ export const MSG = {
   OVERLAY_OFF: 'OVERLAY_OFF',
   VAULT_LIST: 'VAULT_LIST',
   VAULT_CLEAR: 'VAULT_CLEAR',
+  // The persistent tier. Popup <-> service worker only, so unlike the others
+  // these are not mirrored into src/content/.
+  VAULT_STATUS: 'VAULT_STATUS',
+  VAULT_SET_PASS: 'VAULT_SET_PASS',
+  VAULT_UNLOCK: 'VAULT_UNLOCK',
+  VAULT_LOCK: 'VAULT_LOCK',
+  VAULT_REMEMBER: 'VAULT_REMEMBER',
+  VAULT_RECALL: 'VAULT_RECALL',
+  VAULT_FORGET: 'VAULT_FORGET',
+  VAULT_FORGET_ALL: 'VAULT_FORGET_ALL',
   TRACE: 'TRACE',
   STATUS: 'STATUS',
 };

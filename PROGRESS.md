@@ -75,7 +75,12 @@ uvicorn app.main:app --reload --port 8000
 python -m http.server 5500
 # then open http://localhost:5500/demo/test-page.html
 
-# 3. extension
+# 3. extension — must be built first, since Step 4 added a bundled ML library.
+#    Without this there is no dist/ and Chrome will refuse to load it.
+cd extension
+npm install
+npm run build                     # or `npm run watch` while developing
+
 # Chrome -> chrome://extensions -> Developer mode ON
 #        -> "Load unpacked" -> pick the `extension` folder
 ```
@@ -455,5 +460,86 @@ Put an OpenRouter key and a Gemini key in `server/.env` (the file is
 git-ignored, and `server/.env.example` shows the shape). Either one alone is
 enough — the chain just skips whichever provider has no key. With neither,
 everything still runs on the old rules.
+
+---
+
+## Step 4 — Pixels and permanence (in progress)
+
+Two separate pieces. The screenshot half is built; the vault half has just
+started.
+
+### Screenshot redaction ✅
+
+The agent can now *see* the page as pixels, not just read its structure — but
+only after the pixels have been scrubbed.
+
+How it works: the extension takes a picture of the visible tab, hands it to a
+hidden worker page (the background script has no canvas of its own to draw on),
+and that page blacks out two things — every identifier the DOM detector already
+found, and every person the on-device model spots. Only then does the picture
+join the payload.
+
+The detector model is `yolos-tiny`, chosen over the larger `detr-resnet-50` it
+replaced: same 91 recognisable objects, so people are still found, but roughly
+6.5 million internal parameters instead of 41 million. That is the difference
+between a download that completes on a conference centre's wifi and one that
+does not.
+
+**This now needs a build step**, which is new. The extension used to load
+straight from source; the machine-learning library has to be bundled first.
+See "How to run it".
+
+**Two honest gaps.** The ID card on the demo page is *drawn* rather than
+written, so the text detector never sees it and the picture still shows that
+Aadhaar — the coordinates needed to cover it are already being collected as
+"regions we cannot read", they are simply not being used yet. And if the model
+fails to download, the picture is still sent with only the text redaction
+applied, where it ought to send no picture at all.
+
+### A vault that remembers ✅ (first slice)
+
+Until now the vault forgot everything when the browser closed, and only ever
+held what was visible on the page. So on a site that shows none of your details
+— a bare login form — the agent had nothing to work with and could only ask.
+
+There are now two tiers, and the second one is new:
+
+| | Where it lives | Survives a restart | Needs a passphrase |
+|---|---|---|---|
+| What's on the page | memory | no | no |
+| What you asked us to remember | disk, encrypted | yes | yes |
+
+Nothing about the old behaviour changed — the demo runs exactly as before
+without ever touching a passphrase. Remembering is opt-in and additive.
+
+**The security shape, because this is the part a judge will push on.** The
+remembered values are encrypted with AES-256-GCM. The key is not stored
+anywhere: it is derived from your passphrase on demand, 600,000 rounds of
+PBKDF2, and held only in memory — so it is gone the moment the browser closes.
+What sits on the disk is ciphertext and a random salt, which without the
+passphrase is noise. Forget the passphrase and the data is unrecoverable, which
+is the correct trade rather than a shortcoming.
+
+A new **Vault** tab shows the state plainly — locked or unlocked, how many
+values are held, the cipher and the number of rounds — and lets you add, mask,
+forget, lock, and destroy.
+
+**Measured.** 29 checks against the real vault code driven in a browser,
+all passing. The two that matter:
+
+- after writing a real email and Aadhaar, the plaintext appears **nowhere** in
+  what would have been written to disk
+- close the browser, reopen it: the entries are still there, still locked, and
+  unreadable until the right passphrase is given. The wrong one is refused and
+  leaves the vault shut.
+
+Also verified: changing the passphrase re-encrypts every entry and correctly
+invalidates the old one.
+
+### Still to come in this step
+
+Feeding remembered values into the agent loop, so a login form on a site that
+shows nothing can be filled from the vault — that is the point of all this and
+it is the next slice. Then name and address detection, and the metrics panel.
 
 ---

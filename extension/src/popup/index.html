@@ -21,6 +21,7 @@
       <button class="tab active" data-tab="agent">Agent</button>
       <button class="tab" data-tab="vision">Screen graph</button>
       <button class="tab" data-tab="privacy">Privacy</button>
+      <button class="tab" data-tab="vault">Vault</button>
     </nav>
 
     <!-- ------------------------------------------------------ agent tab -->
@@ -105,6 +106,70 @@
         </div>
         <pre id="pv-json"></pre>
       </details>
+    </section>
+
+    <!-- ------------------------------------------------------ vault tab -->
+    <section id="panel-vault" class="panel hidden">
+      <div id="vt-status" class="stats"></div>
+
+      <!-- shown when no persistent vault exists yet -->
+      <div id="vt-setup" class="goal hidden">
+        <p class="hint">
+          Remembered values are encrypted on disk. The key is derived from this
+          passphrase and kept only in memory — if you forget it, the data is
+          gone, and that is the point.
+        </p>
+        <input id="vt-new-pass" type="password" placeholder="passphrase (8+ characters)" />
+        <input id="vt-new-pass2" type="password" placeholder="confirm passphrase" />
+        <div class="row">
+          <button id="vt-create" class="primary">Create vault</button>
+        </div>
+      </div>
+
+      <!-- shown when a vault exists but is locked -->
+      <div id="vt-locked" class="goal hidden">
+        <p class="hint">This vault is locked. Nothing can be read until it is opened.</p>
+        <input id="vt-pass" type="password" placeholder="passphrase" />
+        <div class="row">
+          <button id="vt-unlock" class="primary">Unlock</button>
+        </div>
+      </div>
+
+      <!-- shown when unlocked -->
+      <div id="vt-open" class="goal hidden">
+        <div class="row">
+          <select id="vt-kind">
+            <option value="email">email</option>
+            <option value="phone">phone</option>
+            <option value="aadhaar">aadhaar</option>
+            <option value="pan">pan</option>
+            <option value="card">card</option>
+            <option value="dob">dob</option>
+            <option value="person_name">person_name</option>
+            <option value="address">address</option>
+            <option value="password">password</option>
+            <option value="otp">otp</option>
+          </select>
+          <input id="vt-value" type="text" placeholder="value to remember" />
+        </div>
+        <div class="row">
+          <button id="vt-remember" class="primary">Remember</button>
+          <button id="vt-lock">Lock</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-head">
+          <span>Remembered on this device</span>
+          <span id="vt-count" class="state"></span>
+        </div>
+        <ol id="vt-list"></ol>
+      </div>
+
+      <div class="row">
+        <button id="vt-destroy">Destroy vault</button>
+      </div>
+      <p id="vt-error" class="hint"></p>
     </section>
 
     <footer>

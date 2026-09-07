@@ -330,6 +330,117 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
+// ----------------------------------------------------------- vault tab
+
+const $vtStatus = $('vt-status');
+const $vtSetup = $('vt-setup');
+const $vtLocked = $('vt-locked');
+const $vtOpen = $('vt-open');
+const $vtList = $('vt-list');
+const $vtCount = $('vt-count');
+const $vtError = $('vt-error');
+
+async function vaultOp(type, extra = {}) {
+  const res = await chrome.runtime.sendMessage({ type, ...extra });
+  $vtError.textContent = res?.ok
+    ? ''
+    : res?.error || 'no reply from the service worker — reload the extension';
+  return res?.ok ? res : null;
+}
+
+function renderPersistent(res) {
+  if (!res) return;
+  const { status, entries = [] } = res;
+
+  // Exactly one of the three forms is on screen at a time, driven entirely by
+  // the status the worker just reported rather than by local guesswork.
+  $vtSetup.classList.toggle('hidden', status.configured);
+  $vtLocked.classList.toggle('hidden', !status.configured || status.unlocked);
+  $vtOpen.classList.toggle('hidden', !status.unlocked);
+
+  const row = (k, v) => `<div class="s"><span>${k}</span><span>${v}</span></div>`;
+  const state = !status.configured ? 'not set up' : status.unlocked ? 'unlocked' : 'locked';
+  $vtStatus.innerHTML =
+    row('state', `<b>${state}</b>`) +
+    row('remembered', status.count) +
+    row('at rest', 'AES-256-GCM') +
+    row('key', `PBKDF2 · ${status.iterations.toLocaleString()} rounds`) +
+    `<div class="s wide"><span>key location</span><span>memory only — never on disk</span></div>`;
+
+  $vtCount.textContent = entries.length ? String(entries.length) : '';
+  $vtList.innerHTML = '';
+  if (!entries.length) {
+    $vtList.innerHTML = '<li class="empty">Nothing remembered yet.</li>';
+    return;
+  }
+
+  for (const e of entries) {
+    const li = document.createElement('li');
+    // Skeleton via innerHTML, every value via textContent — the masked value
+    // ultimately comes from something the user typed.
+    li.innerHTML = '<span class="kind"></span><span class="msk"></span><button class="forget"></button>';
+    li.querySelector('.kind').textContent = e.kind;
+    li.querySelector('.msk').textContent = e.locked ? '••••••••' : e.masked;
+    const del = li.querySelector('.forget');
+    del.textContent = 'forget';
+    del.addEventListener('click', async () => {
+      renderPersistent(await vaultOp(MSG.VAULT_FORGET, { id: e.id }));
+    });
+    $vtList.appendChild(li);
+  }
+}
+
+$('vt-create').addEventListener('click', async () => {
+  const pass = $('vt-new-pass').value;
+  if (pass !== $('vt-new-pass2').value) {
+    $vtError.textContent = 'the two passphrases do not match';
+    return;
+  }
+  const res = await vaultOp(MSG.VAULT_SET_PASS, { passphrase: pass });
+  if (res) {
+    $('vt-new-pass').value = '';
+    $('vt-new-pass2').value = '';
+    renderPersistent(res);
+  }
+});
+
+$('vt-unlock').addEventListener('click', async () => {
+  const res = await vaultOp(MSG.VAULT_UNLOCK, { passphrase: $('vt-pass').value });
+  if (res) {
+    $('vt-pass').value = '';
+    renderPersistent(res);
+  }
+});
+
+$('vt-pass').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('vt-unlock').click();
+});
+
+$('vt-lock').addEventListener('click', async () => {
+  renderPersistent(await vaultOp(MSG.VAULT_LOCK));
+});
+
+$('vt-remember').addEventListener('click', async () => {
+  const value = $('vt-value').value.trim();
+  if (!value) {
+    $vtError.textContent = 'nothing to remember';
+    return;
+  }
+  const res = await vaultOp(MSG.VAULT_REMEMBER, { kind: $('vt-kind').value, value });
+  if (res) {
+    $('vt-value').value = '';
+    renderPersistent(res);
+  }
+});
+
+$('vt-value').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('vt-remember').click();
+});
+
+$('vt-destroy').addEventListener('click', async () => {
+  renderPersistent(await vaultOp(MSG.VAULT_FORGET_ALL));
+});
+
 // ------------------------------------------------------------------ init
 
 (async () => {
@@ -353,6 +464,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 
   await renderVault();
+  renderPersistent(await vaultOp(MSG.VAULT_RECALL));
   await loadTrace();
   checkServer();
 })();

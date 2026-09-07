@@ -310,7 +310,61 @@ async function inspect(mode = 'graph') {
   return { graph: annotated, payload, stats: STATS };
 }
 
+/**
+ * The persistent-vault operations. Each is "call one vault function, hand back
+ * the new state" — a table keeps the message listener from growing another
+ * eight near-identical branches.
+ *
+ * Every one of these returns the fresh `status`, so the popup never has to
+ * guess whether it is now locked or unlocked.
+ */
+const VAULT_OPS = {
+  [MSG.VAULT_STATUS]: async () => ({ status: await vault.status() }),
+
+  [MSG.VAULT_SET_PASS]: async (m) => {
+    await vault.setPassphrase(m.passphrase, { rekey: !!m.rekey });
+    return { status: await vault.status(), entries: await vault.recall() };
+  },
+
+  [MSG.VAULT_UNLOCK]: async (m) => {
+    await vault.unlock(m.passphrase);
+    return { status: await vault.status(), entries: await vault.recall() };
+  },
+
+  [MSG.VAULT_LOCK]: async () => {
+    await vault.lock();
+    return { status: await vault.status(), entries: await vault.recall() };
+  },
+
+  [MSG.VAULT_REMEMBER]: async (m) => {
+    const id = await vault.remember(m.kind, m.value, m.label);
+    return { id, status: await vault.status(), entries: await vault.recall() };
+  },
+
+  [MSG.VAULT_RECALL]: async () => ({
+    status: await vault.status(),
+    entries: await vault.recall(),
+  }),
+
+  [MSG.VAULT_FORGET]: async (m) => {
+    await vault.forget(m.id);
+    return { status: await vault.status(), entries: await vault.recall() };
+  },
+
+  [MSG.VAULT_FORGET_ALL]: async () => {
+    await vault.forgetAll();
+    return { status: await vault.status(), entries: [] };
+  },
+};
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (VAULT_OPS[msg.type]) {
+    VAULT_OPS[msg.type](msg)
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((err) => sendResponse({ ok: false, error: String(err.message || err) }));
+    return true;   // async response
+  }
+
   if (msg.type === MSG.RUN_GOAL) {
     runGoal(msg.goal);
     sendResponse({ ok: true });
