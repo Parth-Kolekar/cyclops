@@ -91,22 +91,33 @@ async function perceive(tabId, { goal, step, history }) {
   if (!res) throw new Error('the page is running an old content script — reload the tab (Ctrl+R)');
   if (!res.ok) throw new Error(res.error || 'extraction failed');
   const graph = res.graph;
-  const perceiveMs = performance.now() - t0;
+  const extractMs = performance.now() - t0;
 
   const t1 = performance.now();
   const { elements, manifest, findings, assignments } = await sanitise(graph);
+  const sanitiseMs = performance.now() - t1;
 
   // Capture screenshot and redact visually
   let image_base64 = null;
+  let screenshotMs = 0;
+  let visionMs = 0;
+  
   try {
+    const t2 = performance.now();
     const rawScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
+    screenshotMs = performance.now() - t2;
+    
     await ensureOffscreenDocument();
+    
+    const t3 = performance.now();
     const redactRes = await chrome.runtime.sendMessage({
       type: 'REDACT_IMAGE',
       imageUri: rawScreenshot,
       findings: findings,
       viewport: graph.viewport
     });
+    visionMs = performance.now() - t3;
+    
     if (redactRes && redactRes.ok) {
       image_base64 = redactRes.imageUri;
     }
@@ -114,7 +125,15 @@ async function perceive(tabId, { goal, step, history }) {
     console.error("Screenshot or visual redaction failed:", err);
   }
 
-  const sanitiseMs = performance.now() - t1;
+  const perceiveMs = extractMs + sanitiseMs + screenshotMs + visionMs;
+
+  console.table({
+    'DOM Extraction': `${extractMs.toFixed(0)} ms`,
+    'DOM Sanitisation': `${sanitiseMs.toFixed(0)} ms`,
+    'Screenshot Capture': `${screenshotMs.toFixed(0)} ms`,
+    'Visual Redaction (Yolos + OCR)': `${visionMs.toFixed(0)} ms`,
+    'Total Perceive': `${perceiveMs.toFixed(0)} ms`
+  });
 
   const payload = {
     schema: 'cyclops.payload.v2',
