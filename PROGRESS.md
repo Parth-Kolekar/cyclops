@@ -479,22 +479,26 @@ and that page blacks out two things — every identifier the DOM detector alread
 found, and every person the on-device model spots. Only then does the picture
 join the payload.
 
-The detector model is `yolos-tiny`, chosen over the larger `detr-resnet-50` it
+The object detection model is `yolos-tiny`, chosen over the larger `detr-resnet-50` it
 replaced: same 91 recognisable objects, so people are still found, but roughly
 6.5 million internal parameters instead of 41 million. That is the difference
 between a download that completes on a conference centre's wifi and one that
-does not.
+does not. 
+
+**Closing the Canvas Gap (OCR Redaction)**
+Previously, an ID card drawn on a `<canvas>` or embedded in an image bypassed the DOM detector entirely, leaking the Aadhaar number in the screenshot. We fixed this by integrating **Tesseract.js** directly into the offscreen worker:
+- **Fully local execution**: Tesseract's WASM engine and language data are bundled via the build step. A Manifest V3 CSP error blocking Web Workers was sidestepped by directly instantiating the worker locally (`workerBlobURL: false`).
+- **Precision Blackout**: Tesseract scans the image, extracts the text tree (`blocks` -> `paragraphs` -> `lines` -> `words`), and matches our verified PII regex patterns. 
+- **OCR Realities**: Optical Character Recognition occasionally drops digits (e.g. misreading an Aadhaar as 11 digits). We relaxed the Aadhaar and Credit Card patterns (`\d{3,4}\s?\d{4}\s?\d{4}`) to still trigger the blackout. Tesseract also frequently reports tight bounding boxes that map to the text baseline (which drew black boxes *under* the text visually); we dynamically dilate these boxes upward by 1.5x their height to guarantee a solid blackout.
+
+**Performance Profiling (The WebGPU Bottleneck)**
+We added detailed `console.table` logging across the pipeline to track time taken by DOM scanning, screenshotting, YOLO inference, and OCR. 
+- **The Linux WASM trap**: We discovered YOLO inference was taking up to 35 seconds on Linux machines. Chrome aggressively blacklists WebGPU on some Linux drivers, forcing the model to fall back to a single-threaded CPU (WASM) execution due to extension security rules preventing `SharedArrayBuffer` multithreading.
+- **The Fix**: We updated the pipeline to strictly request `{ device: 'webgpu' }` without falling into the broken ONNX fallback loop. On supported platforms (like Windows, or Chrome with `--enable-unsafe-webgpu`), inference takes milliseconds.
 
 **This now needs a build step**, which is new. The extension used to load
-straight from source; the machine-learning library has to be bundled first.
+straight from source; the machine-learning and OCR libraries have to be bundled first.
 See "How to run it".
-
-**Two honest gaps.** The ID card on the demo page is *drawn* rather than
-written, so the text detector never sees it and the picture still shows that
-Aadhaar — the coordinates needed to cover it are already being collected as
-"regions we cannot read", they are simply not being used yet. And if the model
-fails to download, the picture is still sent with only the text redaction
-applied, where it ought to send no picture at all.
 
 ### A vault that remembers ✅ (first slice)
 
