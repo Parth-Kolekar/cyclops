@@ -141,55 +141,58 @@ window.CYCLOPS = window.CYCLOPS || {};
     const root = makeHost();
     const scale = graph.viewport.norm_scale; // normalised px -> CSS px
     const findings = graph.pii?.findings ?? [];
-    const redacting = mode === 'redact';
-
+    
+    // Engineer 2: The Unified Overlay always shows the redactions (black boxes)
+    // AND the red interactive borders simultaneously for transparency.
     const layer = document.createElement('div');
-    if (redacting) layer.className = 'dim';
     root.appendChild(layer);
 
     for (const el of graph.elements) {
-      const colour = COLOURS[el.role] || COLOURS.text;
-      const label = el.label ? ` ${el.label.slice(0, 22)}` : '';
-      drawBox(layer, el.bbox, scale, colour, `${el.id} ${el.role}${label}`);
-    }
-
-    for (const r of graph.opaque_regions) {
-      drawBox(layer, r.bbox, scale, COLOURS.opaque, `${r.tag} · needs vision`, 'opaque');
-    }
-
-    // Painted last so nothing sits on top of a redaction.
-    if (redacting) {
-      for (const f of findings) {
-        drawRedaction(root, f.bbox, scale, f.token || `[${f.kind.toUpperCase()}]`);
+      // 1. isTopElement check
+      const [nx, ny, nw, nh] = el.bbox;
+      const cssX = nx / scale;
+      const cssY = ny / scale;
+      const cssW = nw / scale;
+      const cssH = nh / scale;
+      
+      const cx = cssX + cssW / 2;
+      const cy = cssY + cssH / 2;
+      
+      let isTop = false;
+      if (cx >= 0 && cy >= 0 && cx <= window.innerWidth && cy <= window.innerHeight) {
+        const topEl = document.elementFromPoint(cx, cy);
+        const actualNode = C.getNode ? C.getNode(el.id) : null;
+        
+        if (topEl && actualNode) {
+          // Element is topmost if it's the element at its center point, or contains that element
+          isTop = (topEl === actualNode) || actualNode.contains(topEl);
+        } else {
+          isTop = true; // Fallback if we can't resolve it
+        }
       }
+      
+      if (!isTop) continue; // Skip obscured elements
+
+      // 2. Render red border with ID
+      drawBox(layer, el.bbox, scale, '#f43f5e', el.id, 'interactive-node');
     }
 
+    // 3. Render Solid Black Boxes for PII
+    for (const f of findings) {
+      drawRedaction(root, f.bbox, scale, f.token || `[${f.kind.toUpperCase()}]`);
+    }
+
+    // The panel is purely informational
     const panel = document.createElement('div');
     panel.className = 'panel';
-    const roles = new Set(graph.elements.map((e) => e.role));
     const kinds = [...new Set(findings.map((f) => f.kind))];
 
-    panel.innerHTML = redacting
-      ? `<h4>Cyclops — privacy filter</h4>
-         <div class="r"><span>PII found</span><span class="hot">${findings.length}</span></div>
-         <div class="r"><span>redacted</span><span class="hot">${findings.length}</span></div>
-         <div class="r"><span>leaked</span><span class="good">0</span></div>
+    panel.innerHTML = `<h4>Cyclops — Unified Vision</h4>
+         <div class="r"><span>elements</span><span>${graph.elements.length}</span></div>
+         <div class="r"><span>PII detected</span><span class="hot">${findings.length}</span></div>
          <div class="r"><span>kinds</span><span>${kinds.join(', ') || '—'}</span></div>
          <div class="r"><span>method</span><span>opaque fill</span></div>
-         <div class="r"><span>detect time</span><span>${graph.pii?.scan_ms ?? '—'} ms</span></div>
-         <div class="legend"><i style="--c:#f43f5e">redacted → tokenised</i></div>`
-      : `<h4>Cyclops — screen graph</h4>
-         <div class="r"><span>page kind</span><span>${graph.page.kind} · ${(graph.page.kind_confidence * 100) | 0}%</span></div>
-         <div class="r"><span>elements</span><span>${graph.elements.length}</span></div>
-         <div class="r"><span>opaque regions</span><span>${graph.opaque_regions.length}</span></div>
-         <div class="r"><span>merged (nested)</span><span>${graph.stats.merged_by_dedupe}</span></div>
-         <div class="r"><span>PII detected</span><span>${findings.length}</span></div>
-         <div class="r"><span>extract time</span><span>${graph.stats.extract_ms} ms</span></div>
-         <div class="legend">${
-           [...roles].filter((r) => COLOURS[r]).map(
-             (r) => `<i style="--c:${COLOURS[r]}">${r}</i>`
-           ).join('')
-         }${graph.opaque_regions.length ? `<i style="--c:${COLOURS.opaque}">opaque</i>` : ''}</div>`;
+         <div class="legend"><i style="--c:#f43f5e">interactive elements</i><i style="--c:#111">redacted</i></div>`;
     root.appendChild(panel);
 
     // Boxes are fixed-position and computed from viewport coords, so any

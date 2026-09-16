@@ -103,10 +103,18 @@ async function perceive(tabId, { goal, step, history }) {
   let visionMs = 0;
   
   try {
+    // Engineer 2: Render the unified overlay (red boxes + DOM black boxes) BEFORE taking the screenshot
+    // so the AI actually sees the opaque e-ids it needs to interact with.
+    await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_SHOW, graph, mode: 'redact' });
+    await new Promise(r => setTimeout(r, 100)); // allow DOM to paint
+
     const t2 = performance.now();
     const rawScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
     screenshotMs = performance.now() - t2;
     
+    // Hide the overlay immediately so the user can use the page
+    await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_HIDE });
+
     await ensureOffscreenDocument();
     
     const t3 = performance.now();

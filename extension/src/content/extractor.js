@@ -299,6 +299,18 @@ window.CYCLOPS = window.CYCLOPS || {};
       const el = c.el;
       const tag = el.tagName.toLowerCase();
       const isField = tag === 'input' || tag === 'textarea' || tag === 'select';
+      
+      // Engineer 2: Extract rich DOM metadata for the backend
+      const html_id = el.id || undefined;
+      let html_class = undefined;
+      if (typeof el.className === 'string' && el.className.trim()) {
+        html_class = el.className.trim();
+      } else if (el.className && el.className.baseVal) {
+        html_class = el.className.baseVal.trim();
+      }
+      const placeholder = el.getAttribute?.('placeholder') || undefined;
+      const aria_label = el.getAttribute?.('aria-label') || undefined;
+      const html_role = el.getAttribute?.('role') || undefined;
 
       return {
         id,
@@ -312,6 +324,12 @@ window.CYCLOPS = window.CYCLOPS || {};
         focused: document.activeElement === el,
         input_type: tag === 'input' ? (el.type || 'text') : undefined,
         autocomplete: el.getAttribute?.('autocomplete') || undefined,
+        // Enriched HTML metadata
+        html_id,
+        html_class,
+        placeholder,
+        aria_label,
+        html_role,
         // A planner can't choose from a dropdown it can't see the contents of.
         options: tag === 'select'
           ? [...el.options].map((o) => o.text.trim()).filter(Boolean).slice(0, 40)
@@ -365,4 +383,5 @@ window.CYCLOPS = window.CYCLOPS || {};
 
   C.extract = extract;
   C.iou = iou;
+  C.getNode = (id) => NODE_MAP.get(id); // Engineer 2: Exported for isTopElement
 })();
