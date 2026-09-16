@@ -479,10 +479,12 @@ and that page blacks out two things — every identifier the DOM detector alread
 found, and every person the on-device model spots. Only then does the picture
 join the payload.
 
+The detector model is `yolos-tiny`, chosen over the larger `detr-resnet-50` it
 The object detection model is `yolos-tiny`, chosen over the larger `detr-resnet-50` it
 replaced: same 91 recognisable objects, so people are still found, but roughly
 6.5 million internal parameters instead of 41 million. That is the difference
 between a download that completes on a conference centre's wifi and one that
+does not.
 does not. 
 
 **Closing the Canvas Gap (OCR Redaction)**
@@ -497,8 +499,16 @@ We added detailed `console.table` logging across the pipeline to track time take
 - **The Fix**: We updated the pipeline to strictly request `{ device: 'webgpu' }` without falling into the broken ONNX fallback loop. On supported platforms (like Windows, or Chrome with `--enable-unsafe-webgpu`), inference takes milliseconds.
 
 **This now needs a build step**, which is new. The extension used to load
+straight from source; the machine-learning library has to be bundled first.
 straight from source; the machine-learning and OCR libraries have to be bundled first.
 See "How to run it".
+
+**Two honest gaps.** The ID card on the demo page is *drawn* rather than
+written, so the text detector never sees it and the picture still shows that
+Aadhaar — the coordinates needed to cover it are already being collected as
+"regions we cannot read", they are simply not being used yet. And if the model
+fails to download, the picture is still sent with only the text redaction
+applied, where it ought to send no picture at all.
 
 ### A vault that remembers ✅ (first slice)
 
