@@ -204,3 +204,11 @@ window.CYCLOPS = window.CYCLOPS || {};
 
   C.overlay = { show, hide, isShown };
 })();
+
+
+/* 
+ * TODO(Engineer 2): Unified Overlay Integration
+ * 1. Port bounding-boxes.js from browser-automation.
+ * 2. Implement isTopElement() check.
+ * 3. Render red numbered boxes for interactive elements alongside our existing black PII boxes.
+ */
