@@ -64,6 +64,14 @@ class Element(BaseModel):
     focused: bool = False
     input_type: Optional[str] = None
     autocomplete: Optional[str] = None
+    # Semantic hints lifted from the page's own markup (integration plan §2.1).
+    # The server may READ these to understand what an element is. It may never
+    # ACT on them — every action still names the opaque id, so a hostile server
+    # cannot reach a node the extractor did not curate.
+    html_id: Optional[str] = None
+    html_class: Optional[str] = None
+    placeholder: Optional[str] = None
+    aria_label: Optional[str] = None
     options: Optional[list[str]] = None  # for <select>
     source: Literal["dom", "vision"] = "dom"
     # This element currently holds PII (already replaced by a placeholder).
@@ -87,12 +95,31 @@ class ActionRecord(BaseModel):
     note: Optional[str] = None
 
 
+class ChatTurn(BaseModel):
+    """One turn of the running conversation, persisted client-side.
+
+    Distinct from `history`, which is the machine trace of actions taken. This
+    is what the human and the agent actually said to each other, so a follow-up
+    like "now do the same for my brother" has something to refer back to.
+
+    It carries placeholders only, never a raw value. That is precisely what
+    makes the transcript safe to write to localStorage and safe to replay to a
+    model on every step.
+    """
+
+    role: Literal["user", "assistant"]
+    text: str = ""
+    ts: Optional[int] = None  # epoch ms, client clock
+
+
 class SanitizedPayload(BaseModel):
-    schema_: str = Field("cyclops.payload.v2", alias="schema")
+    schema_: str = Field("cyclops.payload.v3", alias="schema")
     session_id: str
     step: int = 0
     goal: str = ""
     history: list[ActionRecord] = Field(default_factory=list)
+    # The continuous conversation, loaded from localStorage by the extension.
+    chat_history: list[ChatTurn] = Field(default_factory=list)
     page: PageInfo = Field(default_factory=PageInfo)
     viewport: Viewport = Field(default_factory=Viewport)
     elements: list[Element] = Field(default_factory=list)
@@ -105,11 +132,25 @@ class SanitizedPayload(BaseModel):
 
 
 # ------------------------------------------------------- outbound (Action DSL)
-# Seven verbs. Resist adding more. (design doc §4.3)
+# Fifteen verbs, expanded from seven when the browser-automation toolset was
+# merged in (integration plan §3). The cap still means something: every verb
+# here must be one executor.js can genuinely perform. Advertising a capability
+# the extension does not have is how you get a model that confidently emits
+# actions which silently do nothing.
+#
+# The privacy boundary is unchanged. Element-addressed verbs name an opaque id
+# (`e3`) and never a CSS selector, so the server can only ever reach nodes the
+# extractor already curated.
 
 
 class Click(BaseModel):
     action: Literal["click"]
+    target: str
+    reason: str = ""
+
+
+class DoubleClick(BaseModel):
+    action: Literal["double_click"]
     target: str
     reason: str = ""
 
@@ -128,8 +169,18 @@ class Select(BaseModel):
     reason: str = ""
 
 
+class PressKey(BaseModel):
+    action: Literal["press_key"]
+    key: str
+    # Omitted means "press into whatever is focused" — the click-then-type
+    # workflow their prompt leans on.
+    target: Optional[str] = None
+    reason: str = ""
+
+
 class Scroll(BaseModel):
     action: Literal["scroll"]
+    # No left/right: executor.js scrolls vertically only.
     direction: Literal["up", "down", "top", "bottom"]
     amount_px: Optional[int] = None
     reason: str = ""
@@ -142,17 +193,82 @@ class Navigate(BaseModel):
     reason: str = ""
 
 
+class GoBack(BaseModel):
+    action: Literal["goback"]
+    reason: str = ""
+
+
+class Reload(BaseModel):
+    action: Literal["reload"]
+    reason: str = ""
+
+
+class Wait(BaseModel):
+    action: Literal["wait"]
+    seconds: float = 1.0
+    reason: str = ""
+
+
+class ExtractText(BaseModel):
+    action: Literal["extract_text"]
+    reason: str = ""
+
+
 class AskUser(BaseModel):
     action: Literal["ask_user"]
     question: str
+    # The kind of value being requested, when it is personal data. The vault
+    # mints a token from the answer instead of letting the raw value into the
+    # transcript, and this is how it knows which kind to mint.
+    expects: Optional[str] = None
+    reason: str = ""
 
 
-class Done(BaseModel):
-    action: Literal["done"]
+class ChatResponse(BaseModel):
+    action: Literal["chat_response"]
+    message: str
+    reason: str = ""
+
+
+class ExecuteJs(BaseModel):
+    """Arbitrary JavaScript in the page.
+
+    SECURITY: this verb runs in the live page, where the DOM still holds the
+    user's REAL data — redaction happens on the way out, not in the page. Code
+    here can therefore read an Aadhaar directly and is not constrained by the
+    vault, the redaction manifest, or either PII guard. It is retained on an
+    explicit product decision (integration plan §2.5) as a last resort for
+    canvas editors. Treat every use as outside the privacy guarantee.
+    """
+
+    action: Literal["execute_js"]
+    code: str
+    return_result: bool = False
+    reason: str = ""
+
+
+class Exit(BaseModel):
+    action: Literal["exit"]
     summary: str = ""
 
 
-AnyAction = Union[Click, Fill, Select, Scroll, Navigate, AskUser, Done]
+AnyAction = Union[
+    Click,
+    DoubleClick,
+    Fill,
+    Select,
+    PressKey,
+    Scroll,
+    Navigate,
+    GoBack,
+    Reload,
+    Wait,
+    ExtractText,
+    AskUser,
+    ChatResponse,
+    ExecuteJs,
+    Exit,
+]
 
 
 class Plan(BaseModel):

@@ -10,7 +10,7 @@ The rules, in order:
   3. Otherwise declare the task done.
 """
 
-from ..schema import Click, Done, Fill, Plan, SanitizedPayload, Select
+from ..schema import Click, Exit, Fill, Plan, SanitizedPayload, Select
 
 TEXT_ROLES = {"textbox"}
 SKIP_INPUT_TYPES = {"hidden", "file", "submit", "button", "reset", "checkbox", "radio"}
@@ -135,6 +135,6 @@ def plan(payload: SanitizedPayload) -> Plan:
                 )
 
     return Plan(
-        steps=[Done(action="done", summary="stub planner has nothing left to do")],
+        steps=[Exit(action="exit", summary="stub planner has nothing left to do")],
         confidence=1.0,
     )

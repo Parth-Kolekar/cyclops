@@ -583,3 +583,124 @@ shows nothing can be filled from the vault — that is the point of all this and
 it is the next slice. Then name and address detection, and the metrics panel.
 
 ---
+
+## Step 5 — Teaching the agent a bigger vocabulary (server half) ✅
+
+We are merging a second, more capable browser agent into Cyclops. That agent
+can do far more on a page than ours could, but it was built on the opposite
+assumption: it sends the page's raw contents and a plain screenshot to its
+server and trusts it completely. The merge takes its *skills* and keeps our
+*guarantees*.
+
+This section covers the server half only. The extension half is being built
+alongside it.
+
+### The agent can now do fifteen things instead of seven
+
+It could click, type, choose from a dropdown, scroll, go to a page, ask a
+question, and stop. It can now also double-click, press a key (Enter, Tab,
+Escape), go back, reload a stuck page, wait for something to load, read out
+the page's text when the element list isn't enough, and talk to you mid-task
+without stopping.
+
+The cap still matters, and for a specific reason. The agent we merged from had
+a tool its extension could not actually perform — so its AI kept confidently
+using it and nothing happened, every time. Every verb we add now has to have a
+matching piece of extension code that really does it. To make that checkable
+rather than a promise, the server publishes its list at `/v1/tools` so the two
+halves can be compared automatically.
+
+### It remembers the conversation
+
+Until now each instruction was a fresh start. The agent now receives the
+running conversation, so "now do the same for the other form" means something.
+
+The important part is what that transcript contains. It holds nametags, never
+values — `[AADHAAR_1]`, not the number. That is exactly why it is safe to save
+to disk and safe to send back to the server on every step.
+
+### It can see what things are called, without being able to grab them
+
+The AI was working half-blind: it knew an element was "a button" but not that
+the page's own code called it the *search* button. It now receives the page's
+own naming — the HTML id, class, placeholder and accessibility label.
+
+**This is the one place we deliberately loosened something, so it is worth
+being precise about what did and did not change.** The AI may now *read* those
+names to understand what a control is. It still cannot *use* them to point at
+anything. Every action names our own opaque id (`e4`), and the server is
+refused if it tries to name anything else. It gets better eyesight, not longer
+arms.
+
+The safety net came along for free: the independent re-scan on arrival already
+reads every piece of text in the payload, whatever it is called, so the new
+fields are checked for personal data without anyone having to remember to
+check them. We tested this by hiding an Aadhaar in each new field in turn —
+all five were caught and the request thrown out.
+
+### Asking you for something it doesn't have
+
+When the agent needs a value nobody gave it — your name on a form, say — it
+stops and asks. What is new is where the answer goes: **into the vault, not
+into the conversation.** You type your name, the vault turns it into
+`[NAME_1]`, and the agent fills the form with the nametag. It completes the
+task without ever being told what you typed.
+
+This also fixes something we wrote down as a known flaw back in Step 3: asked
+for a "Full name", the AI used to invent one ("Academic Researcher"). Nothing
+leaked, but a made-up name on a government form is still wrong. Now there is a
+real nametag for it to reach for.
+
+### Nothing it writes escapes the check
+
+Previously we checked the text the AI typed into fields for invented personal
+data. It can now also write a question, a chat message, and a line of code —
+so all four are checked the same way. A fabricated Aadhaar is just as bad in a
+message shown to you, or in a question designed to talk you into typing the
+real one.
+
+### One thing that is honestly a hole
+
+The merged toolset includes the ability to run arbitrary code on the page.
+This was kept on purpose, because some editors cannot be driven any other way.
+
+It has to be described accurately: **that code runs against the real page,
+where the real data still is.** Redaction happens on the way out, not inside
+the page. So code running there is not covered by the vault, the nametag
+system, or either of the two guards. The prompt forbids using it to read any
+field, and the server rejects any code with invented personal data in it, but
+neither of those is a wall — they are instructions to a model.
+
+If the privacy claim needs to be absolute for the demo, this is the one verb
+to remove.
+
+### Measured
+
+| | |
+|---|---|
+| Verbs accepted correctly | **17 / 17** cases |
+| Bad replies refused | **17 / 17** — unknown verbs, made-up element ids, unoffered nametags, invented Aadhaar/card numbers in all four text fields, missing required values |
+| Personal data hidden in the new fields | **5 / 5 caught**, request rejected with HTTP 422 |
+| Instruction sheet size | 319 lines (~3,650 words of model input) |
+| Live behaviour, real models | fills with a nametag, asks when it has none, exits with a real summary — 3 / 3 |
+
+The agent we merged from used a 728-line instruction sheet. We went through it
+line by line and kept everything that is still true for our agent: how to
+recover when an action fails, why never to trust a tool that claims success,
+what a whole task looks like end to end, the fact that half of today's "text
+boxes" are not really text boxes, how to scroll, when to reload a stuck page,
+how to write the escape-hatch code safely and what it cannot do, and how to
+write a closing summary a human actually wants to read.
+
+What we left out is only the parts that describe controls we do not have.
+Their agent points at things with CSS selectors and clicks raw screen
+coordinates; ours is not allowed to do either, by design. Their agent juggles
+browser tabs; ours works in one. Teaching a model a detailed procedure for a
+button that does not exist does not make it more capable — it makes it slower
+and gives it something confident and wrong to reach for.
+
+To stop that creeping back in, there is now a check that reads the finished
+instruction sheet and fails if it mentions any tool the agent does not
+actually have.
+
+---
