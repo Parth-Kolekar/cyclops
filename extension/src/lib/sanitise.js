@@ -9,6 +9,15 @@
 
 import { tokenise, tokenFor } from './vault.js';
 
+/**
+ * Every string field of an element that crosses the network. Keep in step with
+ * the Element model in server/app/schema.py and with the surfaces scanned in
+ * content/pii.js — detection and redaction have to cover the same ground.
+ */
+const STRING_FIELDS = [
+  'value', 'text', 'label', 'placeholder', 'aria_label', 'html_id', 'html_class',
+];
+
 /** Replace every literal occurrence of `needle` — no regex, no escaping bugs. */
 function swap(haystack, needle, token) {
   if (!haystack) return haystack;
@@ -38,10 +47,16 @@ export async function sanitise(graph) {
       for (const f of hits) {
         const token = tokenFor(assignments, f);
         // Every string we are about to ship, not just the one we matched in —
-        // the same number often appears in both the label and the value.
-        clean.value = swap(clean.value, f.value, token);
-        clean.text = swap(clean.text, f.value, token);
-        clean.label = swap(clean.label, f.value, token);
+        // the same value often appears in several of them at once. This list
+        // must cover every string field of an element in the outbound schema;
+        // a field shipped but not swapped here is a leak the server's guard
+        // will catch as a 422, which is how the aria_label hole surfaced.
+        for (const field of STRING_FIELDS) {
+          clean[field] = swap(clean[field], f.value, token);
+        }
+        if (Array.isArray(clean.options)) {
+          clean.options = clean.options.map((o) => swap(o, f.value, token));
+        }
       }
 
       // Tell the server *that* this element holds PII and of what kind, so it
@@ -56,7 +71,16 @@ export async function sanitise(graph) {
     return clean;
   });
 
-  return { elements, manifest, findings, assignments };
+  // The page block ships alongside the elements, so it gets the same
+  // treatment. Findings from anywhere on the page are applied to it: the same
+  // address routinely appears both in an element and in the tab title.
+  const page = { ...graph.page };
+  for (const f of findings) {
+    const token = tokenFor(assignments, f);
+    page.title = swap(page.title, f.value, token);
+  }
+
+  return { elements, page, manifest, findings, assignments };
 }
 
 /**

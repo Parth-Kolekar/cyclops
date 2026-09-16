@@ -32,22 +32,12 @@
       "js": [
         "src/content/extractor.js",
         "src/content/pii.js",
-        "src/content/executor.js",
+        "dist/content/executor.js",
         "src/content/overlay.js",
         "src/content/index.js"
       ],
       "run_at": "document_idle",
       "all_frames": false
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "src/content/tools/*.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
     }
   ]
 }

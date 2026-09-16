@@ -69,7 +69,12 @@ export async function runAutomationLoop(
     // -------------------------------------------------------------- get tab
     // Import inline to avoid circular dependency — getActiveTab lives in sw.js
     // and can throw if no suitable tab is open.
-    const tab = await getActiveTab();
+    //
+    // bootstrap: true — every goal starts from the same known page
+    // (google.com), whatever tab happened to be active when Run was clicked.
+    // Fixes the New Tab page case (nothing to inject a content script into)
+    // and makes a goal behave the same regardless of stale tab state.
+    const tab = await getActiveTab({ bootstrap: true });
     await ensureContentScript(tab.id);
 
     // ------------------------------------------------- initial perception
