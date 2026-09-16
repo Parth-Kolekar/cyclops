@@ -134,3 +134,6 @@ def metrics():
             "avg": round(sum(lat) / len(lat), 2) if lat else None,
         },
     }
+
+
+# TODO(Engineer 6): Update FastAPI endpoints to accept full 'chat_history' array in payload

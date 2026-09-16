@@ -233,3 +233,10 @@ async function handleRedact(imageUri, findings = [], viewport = null) {
   });
 }
 
+
+
+/* 
+ * TODO(Engineer 5): Smart OCR Gating
+ * Only invoke Tesseract if (payload.opaque_regions && payload.opaque_regions.length > 0).
+ * Otherwise, return early to save CPU.
+ */
