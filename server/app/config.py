@@ -21,6 +21,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
 
 LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", os.getenv("GEMINI_TIMEOUT_S", "20")))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4000"))
 
 # Tried left to right; the first one holding a key answers, the rest are the
 # safety net. Gemini sits second because its flash fleet returns 503 under load

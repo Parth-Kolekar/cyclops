@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm && cp node_modules/onnxruntime-web/dist/ort-wasm*.wasm node_modules/onnxruntime-web/dist/ort-wasm*.mjs dist/ && cp node_modules/tesseract.js/dist/worker.min.js dist/ && cp node_modules/tesseract.js-core/tesseract-core.wasm.js dist/ && cp public/eng.traineddata.gz dist/",
+    "build": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm && node copy-assets.js",
     "watch": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm --watch"
   },
   "keywords": [],

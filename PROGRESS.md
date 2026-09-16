@@ -61,6 +61,35 @@ click something arbitrary — and it makes the payload smaller.
 
 ### How to run it
 
+**Quick start (using scripts):**
+
+*Linux / macOS:*
+```bash
+# Terminal 1: Backend
+./run_backend.sh
+
+# Terminal 2: Frontend & Demo (builds extension + serves demo pages on port 5500)
+./run_frontend.sh
+# or watch extension changes while serving: ./run_frontend.sh --watch
+```
+
+*Windows:*
+```cmd
+:: Terminal 1: Backend
+run_backend.bat
+
+:: Terminal 2: Frontend & Demo (builds extension + serves demo pages on port 5500)
+run_frontend.bat
+```
+
+Then in Chrome:
+1. Navigate to `chrome://extensions`
+2. Toggle **Developer mode** ON (top right)
+3. Click **Load unpacked** and select the `extension` folder
+4. Open the demo portal at `http://localhost:5500/demo/portal.html`
+
+**Manual setup (alternative):**
+
 ```bash
 # 1. server
 cd server
@@ -80,9 +109,6 @@ python -m http.server 5500
 cd extension
 npm install
 npm run build                     # or `npm run watch` while developing
-
-# Chrome -> chrome://extensions -> Developer mode ON
-#        -> "Load unpacked" -> pick the `extension` folder
 ```
 
 Click the Cyclops icon on the demo page, type a goal, hit **Run**. The form

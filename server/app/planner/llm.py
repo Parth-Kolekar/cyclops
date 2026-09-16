@@ -165,6 +165,7 @@ async def _call_gemini(system: str, user: str, model: str, image_base64: str | N
         "contents": [{"role": "user", "parts": [{"text": user}] + ([{"inlineData": {"mimeType": "image/jpeg", "data": image_base64.split(",")[1] if "," in image_base64 else image_base64}}] if image_base64 else [])}],
         "generationConfig": {
             "temperature": 0.1,
+            "maxOutputTokens": config.LLM_MAX_TOKENS,
             "responseMimeType": "application/json",
             "responseSchema": GEMINI_SCHEMA,
         },
@@ -204,6 +205,7 @@ async def _call_openrouter(system: str, user: str, model: str, image_base64: str
                 ]},
             ],
             "temperature": 0.1,
+            "max_tokens": config.LLM_MAX_TOKENS,
         }
         if mode == "schema":
             body["response_format"] = {
@@ -254,6 +256,10 @@ async def _call_openrouter(system: str, user: str, model: str, image_base64: str
 
 def _parse_json(text: str) -> dict:
     text = (text or "").strip()
+    
+    # Strip <think>...</think> tags which reasoning models like DeepSeek produce
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    
     # Some models wrap JSON in a ```json fence despite being asked not to.
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
