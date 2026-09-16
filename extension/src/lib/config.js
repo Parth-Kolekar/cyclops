@@ -10,8 +10,15 @@ export const ENDPOINTS = {
   metrics: `${SERVER_BASE}/v1/metrics`,
 };
 
-// Safety rail: never let the agent loop forever during a demo.
-export const MAX_STEPS = 8;
+// Safety rail: stop the loop after N consecutive errors, not after N steps.
+// The loop itself runs until the server returns `action: "done"` or the user
+// clicks Stop.  This replaces the old MAX_STEPS = 8 cap.
+export const MAX_CONSECUTIVE_ERRORS = 3;
+
+// Milliseconds to wait after executing an action before the next perception.
+// Lets the page settle (AJAX, re-renders, animations) so the next snapshot
+// reflects the result of the action rather than a half-rendered intermediate.
+export const SETTLE_DELAY_MS = 400;
 
 // Message types on the chrome.runtime bus.
 export const MSG = {

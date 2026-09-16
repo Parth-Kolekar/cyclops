@@ -4,13 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm && node copy-assets.js",
+    "build": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm && node copy-assets.cjs",
     "watch": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm --watch"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
     "esbuild": "^0.28.2",
