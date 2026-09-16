@@ -36,7 +36,7 @@ import { ChatHistory } from './history.js';
  *
  * This function takes ownership of the automation lifecycle.  It runs until
  * one of three conditions is met:
- *   1. The server returns `action: "done"` (clean exit).
+ *   1. The server returns `action: "exit"` (clean exit).
  *   2. The user clicks Stop (sets AutomationState.running = false).
  *   3. MAX_CONSECUTIVE_ERRORS consecutive errors occur (safety rail).
  *
@@ -170,12 +170,14 @@ export async function runAutomationLoop(
       });
 
       // --------------------------------------------------- exit check
-      if (raw.action === 'done') {
+      // The server speaks `exit` since the fifteen-verb DSL landed. `done` is
+      // still accepted so a stale server build cannot hang the loop forever.
+      if (raw.action === 'exit' || raw.action === 'done') {
         exitCalled = true;
         trace({ kind: 'done', text: raw.summary || 'task complete' });
 
         // Persist the completion in history.
-        history.push({ action: raw, ok: true, note: raw.summary || 'done' });
+        history.push({ action: raw, ok: true, note: raw.summary || 'task complete' });
         await ChatHistory.save(history);
 
         break;

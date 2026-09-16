@@ -217,7 +217,7 @@ async function rehydrate(action, elements) {
  *
  * This thin wrapper replaces the old fixed-step `runGoal()`.  The actual
  * loop logic lives in automation-loop.js and runs until the server returns
- * `action: "done"`, the user clicks Stop, or too many errors accumulate.
+ * `action: "exit"`, the user clicks Stop, or too many errors accumulate.
  *
  * Dependencies are injected to avoid circular module imports.
  */
