@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Cyclops Tools — Unit & Integration Test Suite</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      margin: 0;
+      padding: 24px;
+    }
+    h1 { font-size: 22px; color: #38bdf8; margin-bottom: 8px; }
+    p.desc { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
+    .test-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .test-name { font-weight: 600; font-size: 15px; }
+    .test-details { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+    .badge {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge.running { background: #fef08a; color: #854d0e; }
+    .badge.pass { background: #10b981; color: #ffffff; }
+    .badge.fail { background: #ef4444; color: #ffffff; }
+    #sandbox {
+      background: #020617;
+      border: 1px dashed #475569;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 24px;
+    }
+    #summary {
+      font-size: 16px;
+      font-weight: 600;
+      padding: 12px 16px;
+      border-radius: 8px;
+      background: #334155;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Cyclops Tools Test Suite (Engineer 1)</h1>
+  <p class="desc">Automated validation of <code>interaction.js</code>, <code>text.js</code>, <code>navigation.js</code>, and <code>utility.js</code>.</p>
+
+  <div id="summary">Running tests...</div>
+  <div id="results"></div>
+
+  <!-- Hidden/interactive testbed for the tools -->
+  <div id="sandbox">
+    <h3>Testbed Sandbox DOM</h3>
+    <button id="e_btn" style="padding: 6px 12px;">Test Button</button>
+    <br/><br/>
+    <input id="e_input" type="text" placeholder="Standard input" style="padding: 6px; width: 250px;" />
+    <br/><br/>
+    <div id="e_editable" contenteditable="true" style="border: 1px solid #64748b; padding: 8px; min-height: 30px; background: #0f172a;"></div>
+    <br/>
+    <form id="e_form" onsubmit="event.preventDefault(); return false;">
+      <input id="e_form_input" type="text" value="some text" />
+      <button type="submit" id="e_submit">Submit Form</button>
+    </form>
+    <div id="form_submit_status" style="color: #4ade80; display: none; margin-top: 6px;">Form Submitted!</div>
+  </div>
+
+  <script type="module">
+    import { clickElement, clickCoordinate } from '../extension/src/content/tools/interaction.js';
+    import { typeText, pressKey } from '../extension/src/content/tools/text.js';
+    import { scrollPage } from '../extension/src/content/tools/navigation.js';
+    import { wait, extractPageText, executeJs } from '../extension/src/content/tools/utility.js';
+
+    // Mock window.CYCLOPS runtime
+    window.CYCLOPS = {
+      nodeFor: (id) => document.getElementById(id),
+      flash: (el) => {
+        el.style.outline = '2px solid cyan';
+        setTimeout(() => { el.style.outline = ''; }, 300);
+      }
+    };
+
+    const resultsContainer = document.getElementById('results');
+    const summaryContainer = document.getElementById('summary');
+    let passed = 0;
+    let failed = 0;
+
+    function renderTest(name, details, status) {
+      const card = document.createElement('div');
+      card.className = 'test-card';
+      card.innerHTML = `
+        <div>
+          <div class="test-name">${name}</div>
+          <div class="test-details">${details}</div>
+        </div>
+        <div class="badge ${status}">${status}</div>
+      `;
+      resultsContainer.appendChild(card);
+      if (status === 'pass') passed++;
+      if (status === 'fail') failed++;
+    }
+
+    async function runTests() {
+      // 1. Test clickElement
+      try {
+        let clicked = false;
+        const btn = document.getElementById('e_btn');
+        btn.onclick = () => { clicked = true; };
+        const res = await clickElement('e_btn');
+        if (res.ok && clicked) {
+          renderTest('interaction.js: clickElement', 'Successfully resolved target and triggered click handler', 'pass');
+        } else {
+          renderTest('interaction.js: clickElement', res.error || 'Handler was not triggered', 'fail');
+        }
+      } catch (err) {
+        renderTest('interaction.js: clickElement', err.message, 'fail');
+      }
+
+      // 2. Test clickCoordinate
+      try {
+        const btn = document.getElementById('e_btn');
+        let coordClicked = false;
+        btn.addEventListener('click', () => { coordClicked = true; }, { once: true });
+        const rect = btn.getBoundingClientRect();
+        const normX = (rect.left + rect.width / 2) / window.innerWidth;
+        const normY = (rect.top + rect.height / 2) / window.innerHeight;
+        const res = await clickCoordinate(normX, normY);
+        if (res.ok && coordClicked) {
+          renderTest('interaction.js: clickCoordinate', 'Successfully triggered click at normalized viewport point', 'pass');
+        } else {
+          renderTest('interaction.js: clickCoordinate', res.error || 'Click not detected', 'fail');
+        }
+      } catch (err) {
+        renderTest('interaction.js: clickCoordinate', err.message, 'fail');
+      }
+
+      // 3. Test typeText on standard input
+      try {
+        const input = document.getElementById('e_input');
+        let changeFired = false;
+        input.onchange = () => { changeFired = true; };
+        const res = await typeText('e_input', 'Cyclops Automated Input');
+        if (res.ok && input.value === 'Cyclops Automated Input' && changeFired) {
+          renderTest('text.js: typeText (Standard Input)', 'Set value and dispatched input/change events', 'pass');
+        } else {
+          renderTest('text.js: typeText (Standard Input)', `Value: "${input.value}", Change fired: ${changeFired}`, 'fail');
+        }
+      } catch (err) {
+        renderTest('text.js: typeText (Standard Input)', err.message, 'fail');
+      }
+
+      // 4. Test typeText on contenteditable
+      try {
+        const editable = document.getElementById('e_editable');
+        const res = await typeText('e_editable', 'Rich Text Content Testing');
+        if (res.ok && editable.textContent.includes('Rich Text Content Testing')) {
+          renderTest('text.js: typeText (contentEditable)', 'Cleared and populated rich text element', 'pass');
+        } else {
+          renderTest('text.js: typeText (contentEditable)', `Content: "${editable.textContent}"`, 'fail');
+        }
+      } catch (err) {
+        renderTest('text.js: typeText (contentEditable)', err.message, 'fail');
+      }
+
+      // 5. Test pressKey with Enter form submission fallback
+      try {
+        let formSubmitted = false;
+        const form = document.getElementById('e_form');
+        form.onsubmit = (e) => {
+          e.preventDefault();
+          formSubmitted = true;
+          document.getElementById('form_submit_status').style.display = 'block';
+        };
+        const res = await pressKey('Enter', 'e_form_input');
+        if (res.ok && formSubmitted) {
+          renderTest('text.js: pressKey ("Enter" submits form)', 'Dispatched Enter key and triggered form submit fallback', 'pass');
+        } else {
+          renderTest('text.js: pressKey ("Enter" submits form)', res.error || 'Form submit not triggered', 'fail');
+        }
+      } catch (err) {
+        renderTest('text.js: pressKey ("Enter" submits form)', err.message, 'fail');
+      }
+
+      // 6. Test utility: wait
+      try {
+        const t0 = performance.now();
+        await wait(0.2);
+        const elapsed = performance.now() - t0;
+        if (elapsed >= 180) {
+          renderTest('utility.js: wait(0.2)', `Waited ${Math.round(elapsed)}ms`, 'pass');
+        } else {
+          renderTest('utility.js: wait(0.2)', `Finished too early: ${elapsed}ms`, 'fail');
+        }
+      } catch (err) {
+        renderTest('utility.js: wait', err.message, 'fail');
+      }
+
+      // 7. Test utility: extractPageText
+      try {
+        const res = await extractPageText();
+        if (res.ok && res.text.includes('Cyclops Tools Test Suite') && !res.text.includes('<style>')) {
+          renderTest('utility.js: extractPageText', `Extracted ${res.text.length} visible text chars via TreeWalker`, 'pass');
+        } else {
+          renderTest('utility.js: extractPageText', 'Failed to extract text or leaked non-visible tags', 'fail');
+        }
+      } catch (err) {
+        renderTest('utility.js: extractPageText', err.message, 'fail');
+      }
+
+      // 8. Test utility: executeJs
+      try {
+        const res = await executeJs('return 40 + 2;');
+        if (res.ok && res.result === 42) {
+          renderTest('utility.js: executeJs', 'AsyncFunction executed and returned 42', 'pass');
+        } else {
+          renderTest('utility.js: executeJs', res.error || `Got ${res.result}`, 'fail');
+        }
+      } catch (err) {
+        renderTest('utility.js: executeJs', err.message, 'fail');
+      }
+
+      // 9. Test navigation: scrollPage
+      try {
+        const res = await scrollPage('down', 100);
+        if (res.ok) {
+          renderTest('navigation.js: scrollPage', 'Smooth scroll command executed successfully', 'pass');
+        } else {
+          renderTest('navigation.js: scrollPage', res.error, 'fail');
+        }
+      } catch (err) {
+        renderTest('navigation.js: scrollPage', err.message, 'fail');
+      }
+
+      // Summary update
+      summaryContainer.innerHTML = `Tests Completed: <strong>${passed} Passed</strong>, <strong>${failed} Failed</strong>`;
+      summaryContainer.style.background = failed === 0 ? '#065f46' : '#991b1b';
+      summaryContainer.style.color = '#ffffff';
+    }
+
+    runTests();
+  </script>
+</body>
+</html>
+
