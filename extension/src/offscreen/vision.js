@@ -52,14 +52,14 @@ getDetector().catch(console.error);
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'REDACT_IMAGE') {
-    handleRedact(msg.imageUri, msg.findings, msg.viewport)
+    handleRedact(msg.imageUri, msg.findings, msg.viewport, msg.opaque_regions)
       .then(result => sendResponse({ ok: true, imageUri: result }))
       .catch(err => sendResponse({ ok: false, error: err.toString() }));
     return true; // async response
   }
 });
 
-async function handleRedact(imageUri, findings = [], viewport = null) {
+async function handleRedact(imageUri, findings = [], viewport = null, opaque_regions = []) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = async () => {
@@ -137,88 +137,103 @@ async function handleRedact(imageUri, findings = [], viewport = null) {
 
         // 4. Redact detected persons (faces/bodies)
         for (const b of personBoxes) {
+          ctx.fillStyle = '#111111';
           ctx.fillRect(b.x, b.y, b.w, b.h);
+          ctx.strokeStyle = '#f43f5e';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(b.x, b.y, b.w, b.h);
         }
         
-        // 3. Run OCR to detect and redact text PII embedded in images
-        try {
-          const worker = await createWorker('eng', 1, {
-            workerPath: chrome.runtime.getURL('dist/worker.min.js'),
-            corePath: chrome.runtime.getURL('dist/tesseract-core.wasm.js'),
-            langPath: chrome.runtime.getURL('dist'),
-            workerBlobURL: false
-          });
-          const { data } = await worker.recognize(canvas, {}, { blocks: true });
-          const lines = [];
-          if (data.blocks) {
-            for (const block of data.blocks) {
-              if (!block.paragraphs) continue;
-              for (const para of block.paragraphs) {
-                if (!para.lines) continue;
-                for (const line of para.lines) {
-                  lines.push(line);
-                }
-              }
-            }
-          }
-          const PII_PATTERNS = [
-            { label: 'EMAIL',           regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g },
-            { label: 'PHONE_IN',        regex: /(\+91[\s-]?)?[6-9]\d{9}/g },
-            { label: 'AADHAAR',         regex: /\d{4}\s?\d{4}\s?\d{4}/g },
-            { label: 'AADHAAR',         regex: /\d{3,4}\s?\d{4}\s?\d{4}/g },
-            { label: 'PAN',             regex: /[A-Z]{5}[0-9]{4}[A-Z]/g },
-            { label: 'GST',             regex: /\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]/g },
-            { label: 'CREDIT_CARD',     regex: /\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}/g },
-            { label: 'CREDIT_CARD',     regex: /\d{3,4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}/g },
-            { label: 'IFSC',            regex: /[A-Z]{4}0[A-Z0-9]{6}/g },
-            { label: 'PASSPORT_IN',     regex: /[A-Z][1-9]\d{7}/g }
-          ];
-
-          for (const line of lines) {
-            for (const pattern of PII_PATTERNS) {
-              const regex = new RegExp(pattern.regex.source, 'g');
-              let match;
-              while ((match = regex.exec(line.text)) !== null) {
-                const matchStart = match.index;
-                const matchEnd = match.index + match[0].length;
-                
-                let charIndex = 0;
-                for (const word of line.words || []) {
-                  const wordStart = line.text.indexOf(word.text, charIndex);
-                  if (wordStart === -1) continue;
-                  const wordEnd = wordStart + word.text.length;
-                  charIndex = wordEnd;
-                  
-                  if (wordEnd > matchStart && wordStart < matchEnd) {
-                    const bbox = word.bbox;
-                    const h = bbox.y1 - bbox.y0;
-                    const w = bbox.x1 - bbox.x0;
-                    // OCR boxes are often very tight baselines. Dilate to cover the full text.
-                    const padYTop = h * 1.5;
-                    const padYBot = h * 0.5;
-                    const padX = h * 0.3;
-                    
-                    ctx.fillStyle = 'black';
-                    ctx.fillRect(
-                      bbox.x0 - padX, 
-                      bbox.y0 - padYTop, 
-                      w + (padX * 2), 
-                      h + padYTop + padYBot
-                    );
+        // 5. Run OCR to detect and redact text PII embedded in images (Smart OCR Gating)
+        const shouldRunOCR = opaque_regions && opaque_regions.length > 0;
+        if (shouldRunOCR) {
+          try {
+            const worker = await createWorker('eng', 1, {
+              workerPath: chrome.runtime.getURL('dist/worker.min.js'),
+              corePath: chrome.runtime.getURL('dist/tesseract-core.wasm.js'),
+              langPath: chrome.runtime.getURL('dist'),
+              workerBlobURL: false
+            });
+            const { data } = await worker.recognize(canvas, {}, { blocks: true });
+            const lines = [];
+            if (data.blocks) {
+              for (const block of data.blocks) {
+                if (!block.paragraphs) continue;
+                for (const para of block.paragraphs) {
+                  if (!para.lines) continue;
+                  for (const line of para.lines) {
+                    lines.push(line);
                   }
                 }
               }
             }
+            const PII_PATTERNS = [
+              { label: 'EMAIL',           regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g },
+              { label: 'PHONE_IN',        regex: /(\+91[\s-]?)?[6-9]\d{9}/g },
+              { label: 'AADHAAR',         regex: /\d{4}\s?\d{4}\s?\d{4}/g },
+              { label: 'AADHAAR',         regex: /\d{3,4}\s?\d{4}\s?\d{4}/g },
+              { label: 'PAN',             regex: /[A-Z]{5}[0-9]{4}[A-Z]/g },
+              { label: 'GST',             regex: /\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]/g },
+              { label: 'CREDIT_CARD',     regex: /\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}/g },
+              { label: 'CREDIT_CARD',     regex: /\d{3,4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}/g },
+              { label: 'IFSC',            regex: /[A-Z]{4}0[A-Z0-9]{6}/g },
+              { label: 'PASSPORT_IN',     regex: /[A-Z][1-9]\d{7}/g }
+            ];
+
+            for (const line of lines) {
+              for (const pattern of PII_PATTERNS) {
+                const regex = new RegExp(pattern.regex.source, 'g');
+                let match;
+                while ((match = regex.exec(line.text)) !== null) {
+                  const matchStart = match.index;
+                  const matchEnd = match.index + match[0].length;
+                  
+                  let charIndex = 0;
+                  for (const word of line.words || []) {
+                    const wordStart = line.text.indexOf(word.text, charIndex);
+                    if (wordStart === -1) continue;
+                    const wordEnd = wordStart + word.text.length;
+                    charIndex = wordEnd;
+                    
+                    if (wordEnd > matchStart && wordStart < matchEnd) {
+                      const bbox = word.bbox;
+                      const h = bbox.y1 - bbox.y0;
+                      const w = bbox.x1 - bbox.x0;
+                      // OCR boxes are often very tight baselines. Dilate to cover the full text.
+                      const padYTop = h * 1.5;
+                      const padYBot = h * 0.5;
+                      const padX = h * 0.3;
+                      
+                      ctx.fillStyle = '#111111';
+                      ctx.fillRect(
+                        bbox.x0 - padX, 
+                        bbox.y0 - padYTop, 
+                        w + (padX * 2), 
+                        h + padYTop + padYBot
+                      );
+                      ctx.strokeStyle = '#f43f5e';
+                      ctx.lineWidth = 1;
+                      ctx.strokeRect(
+                        bbox.x0 - padX, 
+                        bbox.y0 - padYTop, 
+                        w + (padX * 2), 
+                        h + padYTop + padYBot
+                      );
+                    }
+                  }
+                }
+              }
+            }
+            await worker.terminate();
+          } catch (err) {
+            console.error("OCR redaction failed:", err);
           }
-          await worker.terminate();
-        } catch (err) {
-          console.error("OCR redaction failed:", err);
         }
         
         const t_ocr = performance.now();
         console.table({
           'Yolos Inference': `${(t_yolos - t_start).toFixed(0)} ms`,
-          'OCR Redaction': `${(t_ocr - t_yolos).toFixed(0)} ms`,
+          'OCR Redaction': shouldRunOCR ? `${(t_ocr - t_yolos).toFixed(0)} ms` : 'Skipped (0 ms)',
           'Total Offscreen Vision': `${(t_ocr - t_start).toFixed(0)} ms`
         });
         
