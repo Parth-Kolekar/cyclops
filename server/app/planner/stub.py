@@ -10,18 +10,13 @@ The rules, in order:
   3. Otherwise declare the task done.
 """
 
-from ..schema import Click, Done, Fill, Plan, SanitizedPayload, Select
+from ..schema import AskUser, Click, Done, Fill, Plan, SanitizedPayload, Select
 
 TEXT_ROLES = {"textbox"}
 SKIP_INPUT_TYPES = {"hidden", "file", "submit", "button", "reset", "checkbox", "radio"}
 
 # Crude label -> sample value table so the filled form looks plausible on stage.
 SAMPLES = [
-    (("email", "e-mail"), "demo@cyclops.local"),
-    (("phone", "mobile"), "9876543210"),
-    (("name",), "Demo User"),
-    (("aadhaar", "aadhar"), "4321 8765 2109"),
-    (("pan",), "ABCPD1234K"),
     (("purpose", "reason"), "academic research"),
     (("area", "district", "region"), "Pune district"),
 ]
@@ -34,6 +29,12 @@ def _token_vocabulary(payload: SanitizedPayload) -> dict[str, str]:
     what the client is holding. We can reference a placeholder; we can never
     resolve one.
     """
+    available = {}
+    for entry in payload.available_vault_tokens:
+        available.setdefault(entry.kind, entry.token)
+    if available:
+        return available
+
     return {
         kind: f"[{kind.upper()}_1]"
         for kind in payload.redaction_manifest.token_types
@@ -81,6 +82,16 @@ def plan(payload: SanitizedPayload) -> Plan:
                         target=el.id,
                         value=available[el.pii_expects],
                         reason=f'"{el.label}" wants the user\'s {el.pii_expects}',
+                    )
+                ],
+                confidence=0.6,
+            )
+        if el.pii_expects:
+            return Plan(
+                steps=[
+                    AskUser(
+                        action="ask_user",
+                        question=f'"{el.label}" needs {el.pii_expects}, but no vault token is available.',
                     )
                 ],
                 confidence=0.6,

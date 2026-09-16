@@ -12,6 +12,7 @@
 import { ENDPOINTS, MAX_STEPS, MSG } from '../lib/config.js';
 import { auditPayload, sanitise } from '../lib/sanitise.js';
 import * as vault from '../lib/vault.js';
+import { ChatHistory } from './history.js';
 
 /**
  * Bump when the content-script protocol changes. A tab still running an older
@@ -141,6 +142,7 @@ async function perceive(tabId, { goal, step, history }) {
     step,
     goal,
     history,
+    available_vault_tokens: await vault.availableTokens(),
     page: graph.page,
     viewport: graph.viewport,
     elements,
@@ -162,7 +164,7 @@ async function perceive(tabId, { goal, step, history }) {
   await chrome.storage.session.set({
     lastGraph: graph,
     lastPayload: payload,
-    lastFindings: findings.map((f) => ({ ...f, token: assignments[`${f.kind} ${f.value}`] })),
+    lastFindings: findings.map((f) => ({ ...f, token: assignments[`${f.kind}\0${f.value}`] })),
     stats: STATS,
   });
 
@@ -201,6 +203,7 @@ async function runGoal(goal) {
   let lastPlanner = null;
 
   try {
+    history.push(...(await ChatHistory.load()));
     const tab = await getActiveTab();
     await ensureContentScript(tab.id);
 
@@ -261,6 +264,8 @@ async function runGoal(goal) {
 
       if (raw.action === 'done') {
         trace({ kind: 'done', text: raw.summary || 'task complete' });
+        history.push({ action: raw, ok: true, note: raw.summary || 'task complete' });
+        await ChatHistory.save(history);
         break;
       }
 
@@ -269,6 +274,7 @@ async function runGoal(goal) {
         // Vault rule 2 caught it. This is a feature, and it is loud on purpose.
         trace({ kind: 'blocked', text: blocked });
         history.push({ action: raw, ok: false, note: blocked });
+        await ChatHistory.save(history);
         continue;
       }
       if (token) {
@@ -288,6 +294,7 @@ async function runGoal(goal) {
       });
 
       history.push({ action: raw, ok: !!result.ok, note: result.note || result.error });
+      await ChatHistory.save(history);
 
       if (result.halt) { status('idle', 'waiting on user'); break; }
 
@@ -321,7 +328,7 @@ async function inspect(mode = 'graph') {
     ...graph,
     pii: {
       ...graph.pii,
-      findings: findings.map((f) => ({ ...f, token: assignments[`${f.kind} ${f.value}`] })),
+      findings: findings.map((f) => ({ ...f, token: assignments[`${f.kind}\0${f.value}`] })),
     },
   };
 
@@ -373,6 +380,11 @@ const VAULT_OPS = {
   [MSG.VAULT_FORGET_ALL]: async () => {
     await vault.forgetAll();
     return { status: await vault.status(), entries: [] };
+  },
+
+  [MSG.HISTORY_CLEAR]: async () => {
+    await ChatHistory.clear();
+    return {};
   },
 };
 

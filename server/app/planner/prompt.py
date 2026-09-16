@@ -120,6 +120,9 @@ def render(payload: SanitizedPayload) -> str:
     manifest = payload.redaction_manifest
 
     tokens = [
+        f"{t.token}({t.kind}, {t.source}{', ' + t.label[:30] if t.label else ''})"
+        for t in payload.available_vault_tokens
+    ] or [
         f"[{kind.upper()}_{n}]"
         for kind, count in sorted(manifest.counts.items())
         for n in range(1, count + 1)
@@ -144,7 +147,7 @@ PAGE
   this is step {payload.step + 1}
 
 AVAILABLE PLACEHOLDERS
-  {" ".join(tokens) if tokens else "(none — this page held no personal data)"}
+  {" ".join(tokens) if tokens else "(none — no vault tokens are available)"}
 
 ELEMENTS
 {elements}

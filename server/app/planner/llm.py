@@ -42,7 +42,7 @@ from . import prompt
 GEMINI_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-PLACEHOLDER_RE = re.compile(r"\[([A-Z][A-Z0-9]*)_(\d+)\]")
+PLACEHOLDER_RE = re.compile(r"\[[A-Z_]+_\d+\]")
 
 # Attempts per provider. Kept low because a second provider is a better use of
 # the next two seconds than a third try at the one that is struggling.
@@ -278,13 +278,23 @@ PROVIDERS = {"openrouter": _call_openrouter, "gemini": _call_gemini}
 # -------------------------------------------------------------- validation
 
 
-def _check_fill_value(value: str, token_types: set[str]) -> None:
+def _offered_tokens(payload: SanitizedPayload) -> set[str]:
+    tokens = {t.token for t in payload.available_vault_tokens}
+    for kind, count in payload.redaction_manifest.counts.items():
+        tokens.update(f"[{kind.upper()}_{n}]" for n in range(1, count + 1))
+    for kind in payload.redaction_manifest.token_types:
+        tokens.add(f"[{kind.upper()}_1]")
+    return tokens
+
+
+def _check_fill_value(value: str, payload: SanitizedPayload) -> None:
     """A fill may carry placeholders, or ordinary text, but never invented PII."""
-    for kind, _n in PLACEHOLDER_RE.findall(value):
-        if kind.lower() not in token_types:
+    offered = _offered_tokens(payload)
+    for token in PLACEHOLDER_RE.findall(value):
+        if token not in offered:
             raise PlannerError(
-                f"used placeholder [{kind}_…] but the manifest only offers "
-                f"{sorted(token_types) or 'nothing'}"
+                f"used placeholder {token} but available placeholders are "
+                f"{sorted(offered) or 'nothing'}"
             )
 
     # Whatever is left after removing our own placeholders must be innocent.
@@ -302,7 +312,6 @@ def _to_action(raw: dict, payload: SanitizedPayload) -> AnyAction:
     verb = (raw.get("action") or "").strip()
     reason = (raw.get("reason") or "").strip()
     ids = {el.id for el in payload.elements}
-    token_types = set(payload.redaction_manifest.token_types)
 
     def target() -> str:
         t = (raw.get("target") or "").strip()
@@ -318,7 +327,7 @@ def _to_action(raw: dict, payload: SanitizedPayload) -> AnyAction:
         value = raw.get("value")
         if not value:
             raise PlannerError("fill without a value")
-        _check_fill_value(value, token_types)
+        _check_fill_value(value, payload)
         return Fill(action="fill", target=t, value=value, reason=reason)
 
     if verb == "select":

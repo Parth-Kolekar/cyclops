@@ -110,10 +110,25 @@
 
     <!-- ------------------------------------------------------ vault tab -->
     <section id="panel-vault" class="panel hidden">
+      <div class="vault-intro">
+        <h2>Remember private details safely</h2>
+        <p>
+          Save details you want Cyclops to reuse later, such as your phone,
+          email, Aadhaar or PAN. The server only sees tokens like
+          <code>[SAVED_PHONE_1]</code>; real values stay on this device.
+        </p>
+      </div>
+
       <div id="vt-status" class="stats"></div>
 
       <!-- shown when no persistent vault exists yet -->
       <div id="vt-setup" class="goal hidden">
+        <h3>Create a passphrase</h3>
+        <p class="hint">
+          A passphrase is the password for this vault. It unlocks your saved
+          details locally and is never sent to Cyclops servers. Use something
+          you can remember.
+        </p>
         <p class="hint">
           Remembered values are encrypted on disk. The key is derived from this
           passphrase and kept only in memory — if you forget it, the data is
@@ -128,8 +143,14 @@
 
       <!-- shown when a vault exists but is locked -->
       <div id="vt-locked" class="goal hidden">
+        <h3>Unlock to use saved details</h3>
+        <p class="hint">
+          Locked means Cyclops can see that a vault exists, but cannot read or
+          use remembered values. Unlock only when you want saved details to be
+          available for the current task.
+        </p>
         <p class="hint">This vault is locked. Nothing can be read until it is opened.</p>
-        <input id="vt-pass" type="password" placeholder="passphrase" />
+        <input id="vt-pass" type="password" placeholder="enter your passphrase" />
         <div class="row">
           <button id="vt-unlock" class="primary">Unlock</button>
         </div>
@@ -137,6 +158,11 @@
 
       <!-- shown when unlocked -->
       <div id="vt-open" class="goal hidden">
+        <h3>Add a remembered value</h3>
+        <p class="hint">
+          Choose what kind of detail this is, then enter the value. Cyclops will
+          store it encrypted and expose only a safe token to the planner.
+        </p>
         <div class="row">
           <select id="vt-kind">
             <option value="email">email</option>
@@ -156,6 +182,10 @@
           <button id="vt-remember" class="primary">Remember</button>
           <button id="vt-lock">Lock</button>
         </div>
+        <p class="hint">
+          Lock hides saved values again. Use it before sharing your screen,
+          stepping away, or when Cyclops no longer needs remembered details.
+        </p>
       </div>
 
       <div class="block">
@@ -169,6 +199,10 @@
       <div class="row">
         <button id="vt-destroy">Destroy vault</button>
       </div>
+      <p class="danger-note">
+        Destroy vault permanently deletes all remembered values from this
+        device. It does not affect temporary tokens found on the current page.
+      </p>
       <p id="vt-error" class="hint"></p>
     </section>
 

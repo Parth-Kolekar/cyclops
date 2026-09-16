@@ -87,12 +87,21 @@ class ActionRecord(BaseModel):
     note: Optional[str] = None
 
 
+class AvailableVaultToken(BaseModel):
+    token: str
+    kind: str
+    source: Literal["session", "persistent"] = "session"
+    label: str = ""
+    id: Optional[str] = None
+
+
 class SanitizedPayload(BaseModel):
     schema_: str = Field("cyclops.payload.v2", alias="schema")
     session_id: str
     step: int = 0
     goal: str = ""
     history: list[ActionRecord] = Field(default_factory=list)
+    available_vault_tokens: list[AvailableVaultToken] = Field(default_factory=list)
     page: PageInfo = Field(default_factory=PageInfo)
     viewport: Viewport = Field(default_factory=Viewport)
     elements: list[Element] = Field(default_factory=list)
