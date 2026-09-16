@@ -1,10 +1,7 @@
 /**
  * Cyclops — action executor.
  *
- * Takes an action from the server and performs it on the real page. The server
- * only ever names an opaque id ("e12"); resolving that to a live node happens
- * here and nowhere else, so a stale or hostile plan fails safely instead of
- * clicking something arbitrary.
+ * Routes execution commands from the server to the robust tool scripts.
  */
 
 window.CYCLOPS = window.CYCLOPS || {};
@@ -12,17 +9,15 @@ window.CYCLOPS = window.CYCLOPS || {};
 (() => {
   const C = window.CYCLOPS;
 
-  /**
-   * React and Vue keep their own copy of an input's value. Assigning `.value`
-   * directly bypasses their setter and the framework never sees the change —
-   * the field looks filled and then silently reverts. Going through the native
-   * prototype descriptor is what makes a fill actually stick.
-   */
-  function setNativeValue(el, value) {
-    const proto = Object.getPrototypeOf(el);
-    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-    if (desc?.set) desc.set.call(el, value);
-    else el.value = value;
+  // Cache for dynamically imported tool modules
+  const tools = {};
+
+  async function loadTool(name) {
+    if (!tools[name]) {
+      const url = chrome.runtime.getURL(`src/content/tools/${name}.js`);
+      tools[name] = await import(url);
+    }
+    return tools[name];
   }
 
   function flash(el, colour = '#22d3ee') {
@@ -31,29 +26,17 @@ window.CYCLOPS = window.CYCLOPS || {};
     el.style.outline = `3px solid ${colour}`;
     el.style.outlineOffset = '2px';
     setTimeout(() => {
-      el.style.outline = prev;
-      el.style.outlineOffset = prevOffset;
+      if (el) {
+        el.style.outline = prev;
+        el.style.outlineOffset = prevOffset;
+      }
     }, 700);
   }
+  
+  // Expose flash for tools to use
+  C.flash = flash;
 
-  function fireMouse(el) {
-    const opts = { bubbles: true, cancelable: true, view: window };
-    el.dispatchEvent(new PointerEvent('pointerdown', opts));
-    el.dispatchEvent(new MouseEvent('mousedown', opts));
-    el.dispatchEvent(new PointerEvent('pointerup', opts));
-    el.dispatchEvent(new MouseEvent('mouseup', opts));
-    el.click();
-  }
-
-  function fillField(el, value) {
-    el.focus();
-    setNativeValue(el, value);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.blur();
-  }
-
-  /** Match by exact value, then by visible text, then case-insensitively. */
+  /** Legacy select logic - kept native for simplicity as it relies on visible text */
   function chooseOption(select, wanted) {
     const opts = [...select.options];
     const want = String(wanted).trim().toLowerCase();
@@ -70,48 +53,80 @@ window.CYCLOPS = window.CYCLOPS || {};
     return hit.text.trim();
   }
 
-  function doScroll(action) {
-    const amount = action.amount_px ?? Math.round(window.innerHeight * 0.8);
-    const map = {
-      down: () => window.scrollBy({ top: amount, behavior: 'instant' }),
-      up: () => window.scrollBy({ top: -amount, behavior: 'instant' }),
-      top: () => window.scrollTo({ top: 0, behavior: 'instant' }),
-      bottom: () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }),
-    };
-    (map[action.direction] || map.down)();
+  function labelOf(el) {
+    return (el.getAttribute('aria-label') ||
+      el.getAttribute('placeholder') ||
+      (el.innerText || '').trim() ||
+      el.name || el.id || el.tagName.toLowerCase()).slice(0, 60);
   }
 
   async function execute(action) {
-    if (action.action === 'done') {
+    // 1. Non-DOM Tools
+    if (action.action === 'done' || action.action === 'exit') {
       return { ok: true, note: action.summary || 'done' };
     }
-    if (action.action === 'ask_user') {
-      return { ok: true, note: `asked: ${action.question}`, halt: true };
+    if (action.action === 'ask_user' || action.action === 'chat_response') {
+      return { ok: true, note: `asked: ${action.question || action.message}`, halt: true };
     }
-    if (action.action === 'scroll') {
-      doScroll(action);
-      return { ok: true, note: `scrolled ${action.direction}` };
+    if (action.action === 'wait') {
+      const util = await loadTool('utility');
+      return await util.wait(action.seconds);
+    }
+    if (action.action === 'extract_text') {
+      const util = await loadTool('utility');
+      return await util.extractPageText();
+    }
+    if (action.action === 'execute_js') {
+      const util = await loadTool('utility');
+      return await util.executeJs(action.code);
+    }
+    
+    // 2. Navigation Tools
+    if (['navigate', 'goback', 'reload', 'scroll'].includes(action.action)) {
+      const nav = await loadTool('navigation');
+      switch (action.action) {
+        case 'navigate': return await nav.navigate(action.url);
+        case 'goback': return await nav.goBack();
+        case 'reload': return await nav.reloadPage();
+        case 'scroll': return await nav.scrollPage(action.direction, action.amount_px);
+      }
     }
 
-    const el = C.nodeFor(action.target);
-    if (!el) return { ok: false, error: `unknown target ${action.target}` };
+    // 3. Coordinate Interactions
+    if (action.action === 'click_coordinate') {
+      const int = await loadTool('interaction');
+      return await int.clickCoordinate(action.x, action.y, action.double_click);
+    }
+
+    // 4. Element Interactions (Requires resolving opaque ID)
+    const el = action.target ? C.nodeFor(action.target) : null;
+    if (action.target && !el) return { ok: false, error: `unknown target ${action.target}` };
+    
+    // Some tools might allow null target (e.g. press_key defaults to activeElement)
+    if (action.action === 'press_key') {
+      const txt = await loadTool('text');
+      return await txt.pressKey(action.key, action.target);
+    }
+
+    // Tools below strictly require a resolved target element
+    if (!el) return { ok: false, error: `missing or unknown target` };
     if (!el.isConnected) return { ok: false, error: `target ${action.target} left the DOM` };
 
-    el.scrollIntoView({ block: 'center', behavior: 'instant' });
-
     switch (action.action) {
-      case 'click':
-        flash(el);
-        fireMouse(el);
-        return { ok: true, note: `clicked "${labelOf(el)}"` };
-
-      case 'fill': {
-        if (!('value' in el)) return { ok: false, error: `${action.target} is not a field` };
-        flash(el);
-        fillField(el, action.value);
-        return { ok: true, note: `filled "${labelOf(el)}"` };
+      case 'click': {
+        const int = await loadTool('interaction');
+        return await int.clickElement(action.target);
       }
-
+      case 'double_click': {
+        const int = await loadTool('interaction');
+        await int.clickElement(action.target);
+        await new Promise(r => setTimeout(r, 100));
+        return await int.clickElement(action.target);
+      }
+      case 'fill': {
+        const txt = await loadTool('text');
+        return await txt.typeText(action.target, action.value);
+      }
       case 'select': {
         if (el.tagName.toLowerCase() !== 'select') {
           return { ok: false, error: `${action.target} is not a dropdown` };
@@ -122,17 +137,9 @@ window.CYCLOPS = window.CYCLOPS || {};
           ? { ok: true, note: `selected "${chosen}"` }
           : { ok: false, error: `no option matching "${action.option}"` };
       }
-
       default:
         return { ok: false, error: `unsupported action "${action.action}"` };
     }
-  }
-
-  function labelOf(el) {
-    return (el.getAttribute('aria-label') ||
-      el.getAttribute('placeholder') ||
-      (el.innerText || '').trim() ||
-      el.name || el.id || el.tagName.toLowerCase()).slice(0, 60);
   }
 
   C.execute = execute;
