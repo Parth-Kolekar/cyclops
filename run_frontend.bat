@@ -14,7 +14,7 @@ echo [1/2] Preparing Chrome Extension...
 where node >nul 2>nul
 if %errorlevel% neq 0 (
     echo Error: Node.js is not installed or not in PATH.
-    echo Please install Node.js (v18+) from https://nodejs.org/
+    echo Please install Node.js ^(v18+^) from https://nodejs.org/
     pause
     exit /b 1
 )
