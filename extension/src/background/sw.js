@@ -122,7 +122,8 @@ async function perceive(tabId, { goal, step, history }) {
       type: 'REDACT_IMAGE',
       imageUri: rawScreenshot,
       findings: findings,
-      viewport: graph.viewport
+      viewport: graph.viewport,
+      opaque_regions: graph.opaque_regions
     });
     visionMs = performance.now() - t3;
     
