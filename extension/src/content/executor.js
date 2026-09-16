@@ -65,8 +65,14 @@ window.CYCLOPS = window.CYCLOPS || {};
     if (action.action === 'done' || action.action === 'exit') {
       return { ok: true, note: action.summary || 'done' };
     }
-    if (action.action === 'ask_user' || action.action === 'chat_response') {
-      return { ok: true, note: `asked: ${action.question || action.message}`, halt: true };
+    // ask_user blocks until a human answers. chat_response is one-way — the
+    // agent says something and carries straight on, which is the whole
+    // distinction the prompt teaches.
+    if (action.action === 'ask_user') {
+      return { ok: true, note: `asked: ${action.question}`, halt: true };
+    }
+    if (action.action === 'chat_response') {
+      return { ok: true, note: action.message };
     }
     if (action.action === 'wait') {
       const util = await loadTool('utility');
