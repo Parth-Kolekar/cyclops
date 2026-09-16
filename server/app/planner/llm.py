@@ -11,10 +11,12 @@ to lose a demo on its own — measured, not assumed. If every provider fails,
 
 Everything a model returns is treated as hostile until checked:
 
-  * the verb must be one of the seven
+  * the verb must be one of the fifteen
   * the target must be an id that exists in THIS capture (no hallucinated ids)
   * a placeholder may only be used if the manifest actually offered that kind
-  * a fill value must not contain fabricated personal data
+  * no model-authored text may contain fabricated personal data — that covers
+    a fill value, but also the question, the chat message and any JS body,
+    since all four are places a model could invent an Aadhaar
 """
 
 import asyncio
@@ -28,14 +30,22 @@ from ..guard import verifier
 from ..schema import (
     AnyAction,
     AskUser,
+    ChatResponse,
     Click,
-    Done,
+    DoubleClick,
+    ExecuteJs,
+    Exit,
+    ExtractText,
     Fill,
+    GoBack,
     Navigate,
     Plan,
+    PressKey,
+    Reload,
     SanitizedPayload,
     Scroll,
     Select,
+    Wait,
 )
 from . import prompt
 
@@ -75,14 +85,30 @@ def _terse(text: str) -> str:
 
 # ------------------------------------------------------------------ schema
 
+VERBS = [
+    "click",
+    "double_click",
+    "fill",
+    "select",
+    "press_key",
+    "scroll",
+    "navigate",
+    "goback",
+    "reload",
+    "wait",
+    "extract_text",
+    "ask_user",
+    "chat_response",
+    "execute_js",
+    "exit",
+]
+
 _PROPERTIES = {
-    "action": {
-        "type": "string",
-        "enum": ["click", "fill", "select", "scroll", "navigate", "ask_user", "done"],
-    },
+    "action": {"type": "string", "enum": VERBS},
     "target": {
         "type": "string",
-        "description": "element id such as e3. REQUIRED for click, fill and select.",
+        "description": "element id such as e3. REQUIRED for click, double_click, "
+        "fill and select. Optional for press_key.",
     },
     "value": {
         "type": "string",
@@ -92,11 +118,34 @@ _PROPERTIES = {
         "type": "string",
         "description": "exact option text to choose. REQUIRED when action is select.",
     },
+    "key": {
+        "type": "string",
+        "description": "key name such as Enter or Tab. REQUIRED when action is press_key.",
+    },
     "direction": {"type": "string", "enum": ["up", "down", "top", "bottom"]},
+    "amount_px": {"type": "integer", "description": "scroll distance; 200-300 is usual"},
     "host": {"type": "string"},
     "path": {"type": "string"},
-    "question": {"type": "string"},
-    "summary": {"type": "string"},
+    "seconds": {"type": "number", "description": "how long to wait, max 10"},
+    "question": {
+        "type": "string",
+        "description": "REQUIRED when action is ask_user.",
+    },
+    "expects": {
+        "type": "string",
+        "description": "kind of personal data being requested (aadhaar, phone, "
+        "email, pan, name...) so the answer becomes a vault token, not plain text.",
+    },
+    "message": {
+        "type": "string",
+        "description": "REQUIRED when action is chat_response.",
+    },
+    "code": {
+        "type": "string",
+        "description": "JavaScript body. REQUIRED when action is execute_js.",
+    },
+    "return_result": {"type": "boolean"},
+    "summary": {"type": "string", "description": "REQUIRED when action is exit."},
     "reason": {"type": "string", "description": "one short clause, shown to the user"},
     "confidence": {"type": "number"},
 }
@@ -111,7 +160,24 @@ _ALL_FIELDS = list(_PROPERTIES)
 GEMINI_SCHEMA = {
     "type": "object",
     "properties": _PROPERTIES,
-    "required": ["action", "target", "value", "option", "reason", "confidence"],
+    # Every field whose absence would break a verb outright. The optional tail
+    # (amount_px, path, seconds, expects, return_result) has working defaults,
+    # so leaving those out costs nothing and keeps the response smaller.
+    "required": [
+        "action",
+        "target",
+        "value",
+        "option",
+        "key",
+        "direction",
+        "host",
+        "question",
+        "message",
+        "code",
+        "summary",
+        "reason",
+        "confidence",
+    ],
     # Decide the verb first, so the dependent fields are filled with the verb
     # already committed to.
     "propertyOrdering": _ALL_FIELDS,
@@ -130,15 +196,21 @@ OPENROUTER_SCHEMA = {
 # plain JSON mode, where the shape has to live in the prompt instead.
 SHAPE_HINT = (
     "\nReply with a single JSON object and nothing else, using exactly these keys:\n"
-    '{"action": one of click|fill|select|scroll|navigate|ask_user|done,\n'
-    ' "target": element id such as "e3" (click, fill, select),\n'
+    '{"action": one of ' + "|".join(VERBS) + ",\n"
+    ' "target": element id such as "e3" (click, double_click, fill, select;\n'
+    "            optional for press_key),\n"
     ' "value": text to type (fill),\n'
     ' "option": exact option text (select),\n'
-    ' "direction": up|down|top|bottom (scroll),\n'
+    ' "key": key name such as Enter or Tab (press_key),\n'
+    ' "direction": up|down|top|bottom, "amount_px": integer (scroll),\n'
     ' "host": string, "path": string (navigate),\n'
-    ' "question": string (ask_user), "summary": string (done),\n'
+    ' "seconds": number, max 10 (wait),\n'
+    ' "question": string, "expects": kind of personal data (ask_user),\n'
+    ' "message": string (chat_response),\n'
+    ' "code": string, "return_result": boolean (execute_js),\n'
+    ' "summary": string (exit),\n'
     ' "reason": one short clause, "confidence": number between 0 and 1}\n'
-    "Use \"\" for keys that do not apply to the verb you chose.\n"
+    'Use "" for keys that do not apply to the verb you chose.\n'
 )
 
 # Set once, the first time a model rejects schema-enforced output, so we do not
@@ -278,9 +350,16 @@ PROVIDERS = {"openrouter": _call_openrouter, "gemini": _call_gemini}
 # -------------------------------------------------------------- validation
 
 
-def _check_fill_value(value: str, token_types: set[str]) -> None:
-    """A fill may carry placeholders, or ordinary text, but never invented PII."""
-    for kind, _n in PLACEHOLDER_RE.findall(value):
+def _check_model_text(text: str, token_types: set[str], where: str) -> None:
+    """Model-authored text may carry placeholders, or ordinary prose, but never
+    invented PII.
+
+    Applied to every free-text field a model can fill, not just `fill`. A
+    fabricated Aadhaar is just as bad in a chat message the user is shown, in a
+    question that talks them into typing the real one, or hardcoded into a JS
+    body that then runs in the page.
+    """
+    for kind, _n in PLACEHOLDER_RE.findall(text):
         if kind.lower() not in token_types:
             raise PlannerError(
                 f"used placeholder [{kind}_…] but the manifest only offers "
@@ -288,12 +367,12 @@ def _check_fill_value(value: str, token_types: set[str]) -> None:
             )
 
     # Whatever is left after removing our own placeholders must be innocent.
-    residue = PLACEHOLDER_RE.sub(" ", value)
+    residue = PLACEHOLDER_RE.sub(" ", text)
     hits = verifier.scan_text(residue)
     if hits:
         kinds = sorted({h["kind"] for h in hits})
         raise PlannerError(
-            f"fabricated personal data in the fill value ({', '.join(kinds)}) — "
+            f"fabricated personal data in the {where} ({', '.join(kinds)}) — "
             "use the placeholder instead"
         )
 
@@ -304,8 +383,12 @@ def _to_action(raw: dict, payload: SanitizedPayload) -> AnyAction:
     ids = {el.id for el in payload.elements}
     token_types = set(payload.redaction_manifest.token_types)
 
-    def target() -> str:
+    def target(required: bool = True) -> str | None:
         t = (raw.get("target") or "").strip()
+        if not t:
+            if required:
+                raise PlannerError(f"{verb} without a target")
+            return None
         if t not in ids:
             raise PlannerError(f"target {t!r} is not an element in this capture")
         return t
@@ -313,12 +396,15 @@ def _to_action(raw: dict, payload: SanitizedPayload) -> AnyAction:
     if verb == "click":
         return Click(action="click", target=target(), reason=reason)
 
+    if verb == "double_click":
+        return DoubleClick(action="double_click", target=target(), reason=reason)
+
     if verb == "fill":
         t = target()
         value = raw.get("value")
         if not value:
             raise PlannerError("fill without a value")
-        _check_fill_value(value, token_types)
+        _check_model_text(value, token_types, "fill value")
         return Fill(action="fill", target=t, value=value, reason=reason)
 
     if verb == "select":
@@ -328,11 +414,25 @@ def _to_action(raw: dict, payload: SanitizedPayload) -> AnyAction:
             raise PlannerError("select without an option")
         return Select(action="select", target=t, option=option, reason=reason)
 
+    if verb == "press_key":
+        key = (raw.get("key") or "").strip()
+        if not key:
+            raise PlannerError("press_key without a key")
+        return PressKey(
+            action="press_key", key=key, target=target(required=False), reason=reason
+        )
+
     if verb == "scroll":
         direction = (raw.get("direction") or "down").strip()
         if direction not in ("up", "down", "top", "bottom"):
             raise PlannerError(f"bad scroll direction {direction!r}")
-        return Scroll(action="scroll", direction=direction, reason=reason)
+        amount = raw.get("amount_px")
+        return Scroll(
+            action="scroll",
+            direction=direction,
+            amount_px=int(amount) if isinstance(amount, (int, float)) and amount else None,
+            reason=reason,
+        )
 
     if verb == "navigate":
         host = (raw.get("host") or "").strip()
@@ -341,16 +441,64 @@ def _to_action(raw: dict, payload: SanitizedPayload) -> AnyAction:
             raise PlannerError("navigate without a host")
         return Navigate(action="navigate", host=host, path=path, reason=reason)
 
+    if verb == "goback":
+        return GoBack(action="goback", reason=reason)
+
+    if verb == "reload":
+        return Reload(action="reload", reason=reason)
+
+    if verb == "wait":
+        raw_seconds = raw.get("seconds", 1.0)
+        try:
+            seconds = float(raw_seconds)
+        except (TypeError, ValueError):
+            seconds = 1.0
+        # Capped: a model that asks for wait(600) has stalled the demo, and
+        # there is no legitimate reason to pause a page longer than this.
+        return Wait(
+            action="wait", seconds=max(0.0, min(seconds, 10.0)), reason=reason
+        )
+
+    if verb == "extract_text":
+        return ExtractText(action="extract_text", reason=reason)
+
     if verb == "ask_user":
         question = (raw.get("question") or reason).strip()
         if not question:
             raise PlannerError("ask_user without a question")
-        return AskUser(action="ask_user", question=question)
+        _check_model_text(question, token_types, "question")
+        return AskUser(
+            action="ask_user",
+            question=question,
+            expects=(raw.get("expects") or "").strip() or None,
+            reason=reason,
+        )
 
-    if verb == "done":
-        return Done(action="done", summary=(raw.get("summary") or reason).strip())
+    if verb == "chat_response":
+        message = (raw.get("message") or reason).strip()
+        if not message:
+            raise PlannerError("chat_response without a message")
+        _check_model_text(message, token_types, "chat message")
+        return ChatResponse(action="chat_response", message=message, reason=reason)
 
-    raise PlannerError(f"{verb!r} is not one of the seven verbs")
+    if verb == "execute_js":
+        code = raw.get("code") or ""
+        if not code.strip():
+            raise PlannerError("execute_js without code")
+        # This runs against the live, un-redacted DOM. We cannot sandbox it
+        # from here, so the least we do is refuse a body carrying invented PII.
+        _check_model_text(code, token_types, "javascript")
+        return ExecuteJs(
+            action="execute_js",
+            code=code,
+            return_result=bool(raw.get("return_result")),
+            reason=reason,
+        )
+
+    if verb == "exit":
+        return Exit(action="exit", summary=(raw.get("summary") or reason).strip())
+
+    raise PlannerError(f"{verb!r} is not one of the fifteen verbs")
 
 
 # -------------------------------------------------------------------- plan

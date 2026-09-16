@@ -7,6 +7,11 @@ Phase 3: the planner is a real LLM. It reasons over redacted text and refers to
 personal data only by placeholder. If it is unreachable, slow, or returns
 something we refuse to act on, we fall back to the Phase 0 rule stub — a demo
 that degrades is better than a demo that stops.
+
+Phase 4: the vocabulary grew from seven verbs to fifteen, and the payload now
+carries the running conversation (`chat_history`) plus the page's own markup
+hints. The guard is unchanged and still walks every string in the payload, so
+the new fields are re-scanned for free.
 """
 
 import time
@@ -48,7 +53,8 @@ def health():
         "service": "cyclops",
         "planner": config.describe() if config.llm_enabled() else "stub",
         "planner_mode": config.PLANNER_MODE,
-        "phase": 3,
+        "phase": 4,
+        "verbs": len(llm.VERBS),
         "guard": "enabled",
         "uptime_s": round(time.time() - STARTED_AT, 1),
     }
@@ -99,6 +105,7 @@ async def plan(payload: SanitizedPayload):
     manifest = payload.redaction_manifest
     print(
         f"[plan] step={payload.step} elements={len(payload.elements)} "
+        f"chat={len(payload.chat_history)} "
         f"tokens={manifest.regions_masked} {manifest.token_types} "
         f'goal="{payload.goal[:40]}" -> {result.steps[0].action} '
         f"via {result.planner} ({took:.1f} ms)"
@@ -118,6 +125,15 @@ def verify(payload: dict):
     }
 
 
+@app.get("/v1/tools")
+def tools():
+    """The verb vocabulary, so the extension can assert it implements exactly
+    what the planner is allowed to emit. A verb the server can produce and the
+    executor cannot perform is a silent no-op — the single most common failure
+    mode in the system we merged this from."""
+    return {"schema": "cyclops.tools.v1", "verbs": llm.VERBS}
+
+
 @app.get("/v1/metrics")
 def metrics():
     lat = METRICS["latency_ms"]
@@ -134,6 +150,3 @@ def metrics():
             "avg": round(sum(lat) / len(lat), 2) if lat else None,
         },
     }
-
-
-# TODO(Engineer 6): Update FastAPI endpoints to accept full 'chat_history' array in payload
