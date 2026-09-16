@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cyclops — settings</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body class="settings">
+    <div class="shell">
+      <header>
+        <div class="brand">
+          <span class="eye"></span>
+          <div>
+            <h1>Cyclops</h1>
+            <p class="tag">screen graph · privacy · vault</p>
+          </div>
+        </div>
+        <span id="server-dot" class="dot" title="server status"></span>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab active" data-tab="vision">Screen graph</button>
+        <button class="tab" data-tab="privacy">Privacy</button>
+        <button class="tab" data-tab="vault">Vault</button>
+      </nav>
+
+      <!-- --------------------------------------------------- vision tab -->
+      <section id="panel-vision" class="panel">
+        <div class="goal">
+          <div class="row">
+            <button id="inspect" class="primary">Scan page</button>
+            <button id="clear-overlay">Clear boxes</button>
+          </div>
+          <p class="hint">
+            Draws a box around everything the agent can see, tagged with the
+            opaque id the server will use to refer to it. Runs against whichever
+            tab was active before you opened this page.
+          </p>
+        </div>
+
+        <div id="sg-summary" class="stats hidden"></div>
+
+        <div class="block">
+          <div class="block-head">
+            <span>Elements</span>
+            <span id="sg-count" class="state"></span>
+          </div>
+          <div class="filters">
+            <input id="sg-filter" type="text" placeholder="filter by label or role…" />
+          </div>
+          <ol id="sg-list"></ol>
+        </div>
+      </section>
+
+      <!-- -------------------------------------------------- privacy tab -->
+      <section id="panel-privacy" class="panel hidden">
+        <div class="goal">
+          <div class="row">
+            <button id="audit" class="primary">Show what leaves</button>
+            <button id="clear-vault">Clear session tokens</button>
+          </div>
+          <p class="hint">
+            Blacks out every detected identifier on the page and shows the exact
+            payload that would go to the server.
+          </p>
+        </div>
+
+        <div id="pv-stats" class="stats hidden"></div>
+
+        <div class="block">
+          <div class="block-head">
+            <span>On screen → what we send</span>
+            <span id="pv-count" class="state"></span>
+          </div>
+          <ol id="pv-list"></ol>
+        </div>
+
+        <div class="block">
+          <div class="block-head"><span>Token vault (on this device only)</span></div>
+          <ol id="pv-vault"></ol>
+        </div>
+
+        <details class="raw">
+          <summary>Raw outbound payload</summary>
+          <div id="pv-screenshot-container" class="hidden">
+            <h3>Redacted screenshot</h3>
+            <img id="pv-screenshot" alt="redacted screenshot" />
+          </div>
+          <pre id="pv-json"></pre>
+        </details>
+      </section>
+
+      <!-- ---------------------------------------------------- vault tab -->
+      <section id="panel-vault" class="panel hidden">
+        <div class="vault-intro">
+          <h2>Remember private details safely</h2>
+          <p>
+            Save details you want Cyclops to reuse later, such as your phone,
+            email, Aadhaar or PAN. The server only sees tokens like
+            <code>[SAVED_PHONE_1]</code>; real values stay on this device.
+          </p>
+        </div>
+
+        <div id="vt-status" class="stats"></div>
+
+        <!-- shown when no persistent vault exists yet -->
+        <div id="vt-setup" class="goal hidden">
+          <h3>Create a passphrase</h3>
+          <p class="hint">
+            A passphrase is the password for this vault. It unlocks your saved
+            details locally and is never sent to Cyclops servers. Use something
+            you can remember.
+          </p>
+          <p class="hint">
+            Remembered values are encrypted on disk. The key is derived from this
+            passphrase and kept only in memory — if you forget it, the data is
+            gone, and that is the point.
+          </p>
+          <input id="vt-new-pass" type="password" placeholder="passphrase (8+ characters)" />
+          <input id="vt-new-pass2" type="password" placeholder="confirm passphrase" />
+          <div class="row">
+            <button id="vt-create" class="primary">Create vault</button>
+          </div>
+        </div>
+
+        <!-- shown when a vault exists but is locked -->
+        <div id="vt-locked" class="goal hidden">
+          <h3>Unlock to use saved details</h3>
+          <p class="hint">
+            Locked means Cyclops can see that a vault exists, but cannot read or
+            use remembered values. Unlock only when you want saved details to be
+            available for the current task.
+          </p>
+          <input id="vt-pass" type="password" placeholder="enter your passphrase" />
+          <div class="row">
+            <button id="vt-unlock" class="primary">Unlock</button>
+          </div>
+        </div>
+
+        <!-- shown when unlocked -->
+        <div id="vt-open" class="goal hidden">
+          <h3>Add a remembered value</h3>
+          <p class="hint">
+            Choose what kind of detail this is, then enter the value. Cyclops will
+            store it encrypted and expose only a safe token to the planner.
+          </p>
+          <div class="row">
+            <select id="vt-kind">
+              <option value="email">email</option>
+              <option value="phone">phone</option>
+              <option value="aadhaar">aadhaar</option>
+              <option value="pan">pan</option>
+              <option value="card">card</option>
+              <option value="dob">dob</option>
+              <option value="person_name">person_name</option>
+              <option value="address">address</option>
+              <option value="password">password</option>
+              <option value="otp">otp</option>
+            </select>
+            <input id="vt-value" type="text" placeholder="value to remember" />
+          </div>
+          <div class="row">
+            <button id="vt-remember" class="primary">Remember</button>
+            <button id="vt-lock">Lock</button>
+          </div>
+          <p class="hint">
+            Lock hides saved values again. Use it before sharing your screen,
+            stepping away, or when Cyclops no longer needs remembered details.
+          </p>
+        </div>
+
+        <div class="block">
+          <div class="block-head">
+            <span>Remembered on this device</span>
+            <span id="vt-count" class="state"></span>
+          </div>
+          <ol id="vt-list"></ol>
+        </div>
+
+        <div class="row">
+          <button id="vt-destroy">Destroy vault</button>
+        </div>
+        <p class="danger-note">
+          Destroy vault permanently deletes all remembered values from this
+          device. It does not affect temporary tokens found on the current page.
+        </p>
+        <p id="vt-error" class="hint"></p>
+      </section>
+    </div>
+
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>

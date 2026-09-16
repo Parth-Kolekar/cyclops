@@ -75,6 +75,20 @@ async function getActiveTab() {
   return tab;
 }
 
+/** Same guard as getActiveTab, for a tab id supplied by the UI. */
+async function resolveTab(tabId) {
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    throw new Error('that tab is gone — reopen settings from the page you want to inspect');
+  }
+  if (/^(chrome|edge|about|chrome-extension):/.test(tab.url || '')) {
+    throw new Error('cannot run on browser-internal pages — open the demo page first');
+  }
+  return tab;
+}
+
 async function ensureOffscreenDocument() {
   const offscreenUrl = chrome.runtime.getURL('src/offscreen/vision.html');
   const existingContexts = await chrome.runtime.getContexts({
@@ -240,8 +254,11 @@ async function startAutomation(goal) {
  * "show me what you see" button — the visual proof behind both the perception
  * accuracy claim and the redaction claim.
  */
-async function inspect(mode = 'graph') {
-  const tab = await getActiveTab();
+async function inspect(mode = 'graph', tabId = null) {
+  // settings.html lives in its own tab, so "the active tab" from there is the
+  // settings page itself. It passes the tab that was in front when the gear was
+  // clicked, and we inspect that instead.
+  const tab = tabId ? await resolveTab(tabId) : await getActiveTab();
   await ensureContentScript(tab.id);
 
   // perceive() reads the sessionId from AutomationState.  If no automation
@@ -340,7 +357,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     AutomationState.stop();
     sendResponse({ ok: true });
   } else if (msg.type === MSG.INSPECT) {
-    inspect(msg.mode)
+    inspect(msg.mode, msg.tabId)
       .then((r) => sendResponse({ ok: true, ...r }))
       .catch((err) => sendResponse({ ok: false, error: String(err.message || err) }));
     return true;   // async response

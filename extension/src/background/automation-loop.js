@@ -211,12 +211,21 @@ export async function runAutomationLoop(
       const result = await chrome.tabs.sendMessage(tab.id, { type: MSG.EXECUTE, action });
       const actMs = performance.now() - t2;
 
-      trace({
-        kind: result.ok ? 'act' : 'error',
-        // Never echo a rehydrated value into the trace.
-        text: result.ok ? result.note : result.error,
-        ms: Math.round(actMs),
-      });
+      // ask_user and chat_response are the agent talking, not machinery, so
+      // they are traced as speech and the popup renders them as chat bubbles.
+      // Everything else is a step row.
+      if (result.ok && raw.action === 'ask_user') {
+        trace({ kind: 'ask', text: raw.question });
+      } else if (result.ok && raw.action === 'chat_response') {
+        trace({ kind: 'say', text: raw.message });
+      } else {
+        trace({
+          kind: result.ok ? 'act' : 'error',
+          // Never echo a rehydrated value into the trace.
+          text: result.ok ? result.note : result.error,
+          ms: Math.round(actMs),
+        });
+      }
 
       // --------------------------------------------------- record result
       AutomationState.setLastResult(result);

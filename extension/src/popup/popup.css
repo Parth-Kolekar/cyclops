@@ -43,6 +43,18 @@ header {
 h1 { margin: 0; font-size: 14px; letter-spacing: .3px; }
 .tag { margin: 0; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
 
+.head-right { display: flex; align-items: center; gap: 10px; }
+
+.gear {
+  flex: none;
+  width: 28px; height: 28px; padding: 0;
+  display: grid; place-items: center;
+  border-radius: 7px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--muted);
+  cursor: pointer;
+}
+.gear:hover { color: var(--accent); border-color: var(--accent); }
+
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .dot.up { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
 .dot.down { background: var(--err); }
@@ -104,28 +116,76 @@ button.primary:disabled { opacity: .5; cursor: default; }
 .state { color: var(--accent); }
 
 ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-ol#log { max-height: 250px; overflow-y: auto; }
 ol#sg-list { max-height: 226px; overflow-y: auto; }
 
-/* ---------------------------------------------------------- step trace */
+/* ---------------------------------------------------------------- chat */
 
-#log li {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--muted);
-  border-radius: 6px;
-  padding: 6px 9px;
-  display: flex; justify-content: space-between; gap: 8px;
+.thread {
+  height: 360px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+  border-top: 1px solid var(--line);
 }
-#log .k { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
-#log .t { flex: 1; word-break: break-word; }
-#log .ms { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11px; flex: none; }
 
-#log li.perceive { border-left-color: #818cf8; }
-#log li.plan { border-left-color: var(--accent); }
-#log li.act, #log li.done { border-left-color: var(--ok); }
-#log li.error { border-left-color: var(--err); }
-#log li.error .t { color: var(--err); }
+.thread .empty {
+  margin: auto; padding: 0 12px;
+  color: var(--muted); font-size: 12px; text-align: center;
+}
+
+.msg { display: flex; }
+.msg.user { justify-content: flex-end; }
+.msg.agent { justify-content: flex-start; }
+
+.bubble {
+  max-width: 82%;
+  padding: 8px 11px;
+  border-radius: 12px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.msg.user .bubble {
+  background: var(--accent); color: #04202a;
+  border-bottom-right-radius: 4px;
+}
+.msg.agent .bubble {
+  background: var(--panel); border: 1px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+
+/* Machinery rows. Deliberately quieter than the bubbles but still legible —
+   this is the line a judge reads to see the redaction happening. */
+.step {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 4px 3px 9px;
+  border-left: 2px solid var(--line);
+  font-size: 11px; color: var(--muted);
+}
+.step .k {
+  flex: none; min-width: 52px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: .6px;
+}
+.step .t { flex: 1; word-break: break-word; }
+.step .ms { flex: none; font-variant-numeric: tabular-nums; opacity: .7; }
+
+.step.perceive { border-left-color: #818cf8; }
+.step.plan { border-left-color: var(--accent); }
+.step.plan .t { color: var(--text); }
+.step.act { border-left-color: var(--ok); }
+.step.redact, .step.vault { border-left-color: var(--pii); }
+.step.redact .t, .step.vault .t { color: #fda4af; }
+.step.blocked { border-left-color: var(--warn); }
+.step.blocked .t { color: var(--warn); }
+.step.error { border-left-color: var(--err); }
+.step.error .t { color: var(--err); }
+
+/* ----------------------------------------------------------- composer */
+
+.composer { padding: 10px 14px 12px; border-top: 1px solid var(--line); }
+.composer .row { align-items: center; }
+.composer .state { flex: none; font-size: 11px; }
+.composer button { flex: none; padding: 7px 16px; }
+.composer button:disabled { opacity: .45; cursor: default; }
 
 /* -------------------------------------------------------- screen graph */
 
@@ -176,9 +236,6 @@ ol#sg-list { max-height: 226px; overflow-y: auto; }
 
 /* -------------------------------------------------------- privacy tab */
 
-#log li.redact, #log li.vault { border-left-color: var(--pii); }
-#log li.blocked { border-left-color: var(--warn); }
-#log li.blocked .t { color: var(--warn); }
 
 ol#pv-list, ol#pv-vault { max-height: 200px; overflow-y: auto; }
 
