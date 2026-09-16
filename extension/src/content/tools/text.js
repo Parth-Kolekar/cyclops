@@ -83,22 +83,12 @@ export async function typeText(opaqueId, text, graph) {
     } else if (isContentEditable) {
         let success = false;
         
-        if (navigator.clipboard && window.ClipboardEvent) {
-            try {
-                el.focus();
-                const clipboardData = new DataTransfer();
-                clipboardData.setData('text/plain', text);
-                const pasteEvent = new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true });
-                if (el.dispatchEvent(pasteEvent)) success = true;
-            } catch (e) {}
-        }
-        
-        if (!success) {
-            try {
-                el.focus();
-                if (document.execCommand && document.execCommand('insertText', false, text)) success = true;
-            } catch (e) {}
-        }
+        try {
+            el.focus();
+            if (document.execCommand && document.execCommand('insertText', false, text)) {
+                success = true;
+            }
+        } catch (e) {}
 
         if (!success) {
             try {
@@ -111,16 +101,17 @@ export async function typeText(opaqueId, text, graph) {
                 
                 if (window.InputEvent) {
                     const inputEvent = new InputEvent('beforeinput', { inputType: 'insertText', data: text, bubbles: true, cancelable: true });
-                    if (el.dispatchEvent(inputEvent)) {
-                        selection.deleteFromDocument();
-                        const textNode = document.createTextNode(text);
-                        range.insertNode(textNode);
-                        range.setStartAfter(textNode);
-                        selection.removeAllRanges();
-                        selection.addRange(range);
-                        success = true;
-                    }
+                    el.dispatchEvent(inputEvent);
                 }
+                
+                // Manually mutate the DOM if execCommand failed
+                selection.deleteFromDocument();
+                const textNode = document.createTextNode(text);
+                range.insertNode(textNode);
+                range.setStartAfter(textNode);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                success = true;
             } catch (e) {}
         }
 
@@ -184,8 +175,11 @@ export async function pressKey(keyName, opaqueId = null, graph = null) {
     // Fallbacks
     if (keyName === 'Enter') {
         if (target.form) {
-            target.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            if (target.form.submit) target.form.submit();
+            const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+            const notPrevented = target.form.dispatchEvent(submitEvent);
+            if (notPrevented && typeof target.form.submit === 'function') {
+                target.form.submit();
+            }
         } else if (target.tagName === 'BUTTON' || target.type === 'submit' || target.getAttribute('role') === 'button') {
             target.click();
         }
