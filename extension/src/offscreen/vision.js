@@ -11,8 +11,8 @@ env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('dist/');
 let detectorPipeline = null;
 let isInitializing = false;
 
-async function getDetector() {
-  if (detectorPipeline) return detectorPipeline;
+async function getDetector(forceWasm = false) {
+  if (detectorPipeline && !forceWasm) return detectorPipeline;
   if (isInitializing) {
     // Wait until initialized
     return new Promise(resolve => {
@@ -26,12 +26,22 @@ async function getDetector() {
   }
   
   isInitializing = true;
+  // Linux Chromium WebGPU currently crashes inside onnxruntime buffer_manager.cc (mapAsync on GPUBuffer).
+  // Default to WASM on Linux to avoid GPU crashes; use WebGPU on Windows/macOS with wasm fallback.
+  const isLinux = typeof navigator !== 'undefined' && /Linux/i.test(navigator.userAgent);
+  const preferredDevice = (!forceWasm && !isLinux) ? 'webgpu' : 'wasm';
+
   try {
-    // yolos-tiny over detr-resnet-50: same 91 COCO labels (so `person` still
-    // works) but ~6.5M params against ~41M.
-    detectorPipeline = await pipeline('object-detection', 'Xenova/yolos-tiny', { device: 'webgpu' });
+    console.log(`Loading YOLOS detector with device: ${preferredDevice}...`);
+    detectorPipeline = await pipeline('object-detection', 'Xenova/yolos-tiny', { device: preferredDevice });
   } catch (err) {
-    console.error("Failed to load model on WebGPU:", err);
+    console.warn(`Failed to load model on ${preferredDevice}, falling back to wasm:`, err);
+    try {
+      detectorPipeline = await pipeline('object-detection', 'Xenova/yolos-tiny', { device: 'wasm' });
+    } catch (e) {
+      console.error("Failed to load model on wasm fallback:", e);
+      detectorPipeline = null;
+    }
   }
   isInitializing = false;
   return detectorPipeline;
@@ -58,9 +68,51 @@ async function handleRedact(imageUri, findings = [], viewport = null) {
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
+
+        const t_start = performance.now();
+        // 1. Run object detection inference for visual features
+        const personBoxes = [];
+        try {
+          let detector = await getDetector();
+          if (detector) {
+            let results;
+            try {
+              results = await detector(imageUri, { threshold: 0.5 });
+            } catch (inferErr) {
+              console.warn("Inference failed on current device, retrying with WASM...", inferErr);
+              detector = await getDetector(true);
+              if (detector) {
+                results = await detector(imageUri, { threshold: 0.5 });
+              }
+            }
+
+            if (Array.isArray(results)) {
+              for (const res of results) {
+                const { box, label, score } = res;
+                if (box && label === 'person' && score > 0.5) {
+                  const w = box.xmax - box.xmin;
+                  const h = box.ymax - box.ymin;
+                  // Guard against corrupt model outputs that cover nearly the entire screen
+                  if (w >= canvas.width * 0.85 && h >= canvas.height * 0.85) {
+                    console.warn("Ignoring suspiciously large detection box covering whole screen:", box);
+                    continue;
+                  }
+                  personBoxes.push({ x: box.xmin, y: box.ymin, w, h });
+                }
+              }
+            }
+          }
+        } catch (detectorErr) {
+          console.error("YOLOS detection failed:", detectorErr);
+        }
+        const t_yolos = performance.now();
+
+        // 2. Draw screenshot to canvas.
+        // NOTE: Drawn AFTER object detection so that if the GPU process resets during inference,
+        // the 2D canvas context is cleanly painted with the image rather than wiped to black.
         ctx.drawImage(img, 0, 0);
 
-        // 1. Redact textual PII from Vault
+        // 3. Redact textual PII from Vault (DOM findings)
         ctx.fillStyle = 'black';
         if (viewport && findings && findings.length > 0) {
           const scaleX = img.width / viewport.w;
@@ -83,21 +135,10 @@ async function handleRedact(imageUri, findings = [], viewport = null) {
           }
         }
 
-        const t_start = performance.now();
-        // 2. Run object detection inference for visual features
-        const detector = await getDetector();
-        if (detector) {
-          const results = await detector(imageUri, { threshold: 0.5 });
-          
-          for (const res of results) {
-            const { box, label, score } = res;
-            // Redact detected persons (faces/bodies)
-            if (box && label === 'person' && score > 0.5) {
-              ctx.fillRect(box.xmin, box.ymin, box.xmax - box.xmin, box.ymax - box.ymin);
-            }
-          }
+        // 4. Redact detected persons (faces/bodies)
+        for (const b of personBoxes) {
+          ctx.fillRect(b.x, b.y, b.w, b.h);
         }
-        const t_yolos = performance.now();
         
         // 3. Run OCR to detect and redact text PII embedded in images
         try {
