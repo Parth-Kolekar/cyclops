@@ -27,7 +27,7 @@
  *    the privacy guarantee that no raw PII leaves the device.
  */
 
-import { ENDPOINTS, MSG, SETTLE_DELAY_MS } from '../lib/config.js';
+import { ENDPOINTS, MSG, NAV_SETTLE_DELAY_MS, SETTLE_DELAY_MS } from '../lib/config.js';
 import { AutomationState } from './automation-state.js';
 import { ChatHistory } from './history.js';
 
@@ -118,6 +118,10 @@ export async function runAutomationLoop(
         perception = initial;
       } else {
         status('perceiving', `step ${step + 1}`);
+        // A navigation destroys the content script, so re-establish it before
+        // every capture. ensureContentScript pings first and only injects when
+        // the answer is missing or stale, so this is cheap on the common path.
+        await ensureContentScript(tab.id);
         perception = await perceive(tab.id, {
           goal,
           step,
@@ -243,8 +247,11 @@ export async function runAutomationLoop(
         break;
       }
 
-      // Let the page settle before the next capture.
-      await new Promise((r) => setTimeout(r, SETTLE_DELAY_MS));
+      // Let the page settle before the next capture. A navigation is tearing
+      // the document down and building a new one, so it needs longer than a
+      // click that merely re-rendered part of the page.
+      const settle = result.navigated ? NAV_SETTLE_DELAY_MS : SETTLE_DELAY_MS;
+      await new Promise((r) => setTimeout(r, settle));
     }
   } catch (err) {
     trace({ kind: 'error', text: String(err.message || err) });

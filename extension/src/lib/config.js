@@ -20,6 +20,9 @@ export const MAX_CONSECUTIVE_ERRORS = 3;
 // reflects the result of the action rather than a half-rendered intermediate.
 export const SETTLE_DELAY_MS = 400;
 
+/** A navigation rebuilds the whole document — it needs longer than a click. */
+export const NAV_SETTLE_DELAY_MS = 1500;
+
 // Message types on the chrome.runtime bus.
 export const MSG = {
   RUN_GOAL: 'RUN_GOAL',

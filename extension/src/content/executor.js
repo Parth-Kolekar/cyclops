@@ -85,7 +85,7 @@ window.CYCLOPS = window.CYCLOPS || {};
     if (['navigate', 'goback', 'reload', 'scroll'].includes(action.action)) {
       const nav = await loadTool('navigation');
       switch (action.action) {
-        case 'navigate': return await nav.navigate(action.url);
+        case 'navigate': return await nav.navigate(action.url || (action.host ? `${action.host}${action.path || '/'}` : ''));
         case 'goback': return await nav.goBack();
         case 'reload': return await nav.reloadPage();
         case 'scroll': return await nav.scrollPage(action.direction, action.amount_px);

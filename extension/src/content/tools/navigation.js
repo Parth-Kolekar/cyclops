@@ -2,22 +2,30 @@
  * Ported from browser-automation/extension/tools/navigation-tools.js
  */
 
+// Navigating destroys this content script, and with it the pending
+// sendResponse — the caller would see "message channel closed" instead of a
+// result. Defer by a tick so the answer is already on its way out.
+function afterReply(fn) {
+    setTimeout(fn, 50);
+}
+
 export async function navigate(url) {
+    if (!url) return { ok: false, error: 'navigate without a destination' };
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://' + url;
     }
-    window.location.href = url;
-    return { ok: true, note: `navigating to ${url}` };
+    afterReply(() => { window.location.href = url; });
+    return { ok: true, note: `navigating to ${url}`, navigated: true };
 }
 
 export async function goBack() {
-    window.history.back();
-    return { ok: true, note: `navigating back` };
+    afterReply(() => window.history.back());
+    return { ok: true, note: `navigating back`, navigated: true };
 }
 
 export async function reloadPage() {
-    window.location.reload();
-    return { ok: true, note: `reloading page` };
+    afterReply(() => window.location.reload());
+    return { ok: true, note: `reloading page`, navigated: true };
 }
 
 export async function scrollPage(direction, amount = null) {

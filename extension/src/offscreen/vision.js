@@ -8,47 +8,49 @@ env.useBrowserCache = true;
 env.backends.onnx.wasm.numThreads = 1;
 env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('dist/');
 
-let detectorPipeline = null;
-let isInitializing = false;
+// The service worker blocks on our response, so a model that is still
+// downloading must not hold the channel open past this.
+const DETECTOR_WAIT_MS = 8000;
 
-async function getDetector(forceWasm = false) {
-  if (detectorPipeline && !forceWasm) return detectorPipeline;
-  if (isInitializing) {
-    // Wait until initialized
-    return new Promise(resolve => {
-      const check = setInterval(() => {
-        if (detectorPipeline) {
-          clearInterval(check);
-          resolve(detectorPipeline);
-        }
-      }, 100);
-    });
-  }
-  
-  isInitializing = true;
-  // Linux Chromium WebGPU currently crashes inside onnxruntime buffer_manager.cc (mapAsync on GPUBuffer).
-  // Default to WASM on Linux to avoid GPU crashes; use WebGPU on Windows/macOS with wasm fallback.
+let detectorPromise = null;
+
+async function loadDetector() {
+  // Linux Chromium WebGPU currently crashes inside onnxruntime
+  // buffer_manager.cc (mapAsync on GPUBuffer), so it starts on WASM there.
+  // Everywhere else WebGPU is tried first and falls back.
   const isLinux = typeof navigator !== 'undefined' && /Linux/i.test(navigator.userAgent);
-  const preferredDevice = (!forceWasm && !isLinux) ? 'webgpu' : 'wasm';
+  const preferred = isLinux ? 'wasm' : 'webgpu';
 
   try {
-    console.log(`Loading YOLOS detector with device: ${preferredDevice}...`);
-    detectorPipeline = await pipeline('object-detection', 'Xenova/yolos-tiny', { device: preferredDevice });
+    console.log(`Loading YOLOS detector with device: ${preferred}...`);
+    return await pipeline('object-detection', 'Xenova/yolos-tiny', { device: preferred });
   } catch (err) {
-    console.warn(`Failed to load model on ${preferredDevice}, falling back to wasm:`, err);
-    try {
-      detectorPipeline = await pipeline('object-detection', 'Xenova/yolos-tiny', { device: 'wasm' });
-    } catch (e) {
-      console.error("Failed to load model on wasm fallback:", e);
-      detectorPipeline = null;
-    }
+    if (preferred === 'wasm') throw err;
+    console.warn(`Failed to load model on ${preferred}, falling back to wasm:`, err);
+    return await pipeline('object-detection', 'Xenova/yolos-tiny', { device: 'wasm' });
   }
-  isInitializing = false;
-  return detectorPipeline;
+}
+
+/**
+ * One promise every caller awaits.
+ *
+ * The previous version polled a module variable every 100ms and only ever
+ * checked for success, so a failed load left every waiter spinning forever —
+ * the message channel closed with no response and the screenshot silently
+ * vanished from the payload. A failure here resolves to null instead.
+ */
+function getDetector() {
+  if (!detectorPromise) {
+    detectorPromise = loadDetector().catch((err) => {
+      console.error('Failed to load detector:', err);
+      return null;
+    });
+  }
+  return detectorPromise;
 }
 
 // Pre-load model in background
-getDetector().catch(console.error);
+getDetector();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'REDACT_IMAGE') {
@@ -73,14 +75,19 @@ async function handleRedact(imageUri, findings = [], viewport = null, opaque_reg
         // 1. Run object detection inference for visual features
         const personBoxes = [];
         try {
-          let detector = await getDetector();
+          // Cap the wait: a model still downloading must not hold the
+          // service worker's message channel open.
+          let detector = await Promise.race([
+            getDetector(),
+            new Promise((r) => setTimeout(() => r(null), DETECTOR_WAIT_MS)),
+          ]);
           if (detector) {
             let results;
             try {
               results = await detector(imageUri, { threshold: 0.5 });
             } catch (inferErr) {
               console.warn("Inference failed on current device, retrying with WASM...", inferErr);
-              detector = await getDetector(true);
+              detector = await getDetector();
               if (detector) {
                 results = await detector(imageUri, { threshold: 0.5 });
               }
