@@ -14,6 +14,9 @@ import { auditPayload, sanitise } from '../lib/sanitise.js';
 import * as vault from '../lib/vault.js';
 import { AutomationState } from './automation-state.js';
 import { runAutomationLoop, setSwHelpers } from './automation-loop.js';
+// Still needed here for the popup's "clear history" command; the loop itself
+// loads and saves through its own import.
+import { ChatHistory } from './history.js';
 
 /**
  * Bump when the content-script protocol changes. A tab still running an older
@@ -157,6 +160,7 @@ async function perceive(tabId, { goal, step, history }) {
     step,
     goal,
     history,
+    available_vault_tokens: await vault.availableTokens(),
     page: graph.page,
     viewport: graph.viewport,
     elements,
@@ -178,7 +182,7 @@ async function perceive(tabId, { goal, step, history }) {
   await chrome.storage.session.set({
     lastGraph: graph,
     lastPayload: payload,
-    lastFindings: findings.map((f) => ({ ...f, token: assignments[`${f.kind} ${f.value}`] })),
+    lastFindings: findings.map((f) => ({ ...f, token: assignments[`${f.kind}\0${f.value}`] })),
     stats: STATS,
   });
 
@@ -220,6 +224,8 @@ async function rehydrate(action, elements) {
 async function startAutomation(goal) {
   if (AutomationState.isRunning()) return;
 
+  // The loop lives in automation-loop.js as of the orchestration port. It
+  // loads and persists ChatHistory itself, so nothing here needs to.
   await runAutomationLoop(goal, {
     perceive,
     rehydrate,
@@ -255,7 +261,7 @@ async function inspect(mode = 'graph') {
     ...graph,
     pii: {
       ...graph.pii,
-      findings: findings.map((f) => ({ ...f, token: assignments[`${f.kind} ${f.value}`] })),
+      findings: findings.map((f) => ({ ...f, token: assignments[`${f.kind}\0${f.value}`] })),
     },
   };
 
@@ -307,6 +313,11 @@ const VAULT_OPS = {
   [MSG.VAULT_FORGET_ALL]: async () => {
     await vault.forgetAll();
     return { status: await vault.status(), entries: [] };
+  },
+
+  [MSG.HISTORY_CLEAR]: async () => {
+    await ChatHistory.clear();
+    return {};
   },
 };
 

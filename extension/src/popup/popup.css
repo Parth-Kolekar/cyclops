@@ -228,6 +228,39 @@ ol#pv-list, ol#pv-vault { max-height: 200px; overflow-y: auto; }
 
 /* -------------------------------------------------------------- vault tab */
 
+.vault-intro {
+  padding: 12px 14px 10px;
+}
+.vault-intro h2,
+.goal h3 {
+  margin: 0 0 5px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+}
+.vault-intro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.vault-intro code {
+  color: var(--ok);
+  font: 600 10px ui-monospace, monospace;
+}
+#panel-vault .goal .hint:first-of-type {
+  margin-top: 0;
+}
+#panel-vault .goal h3 + .hint {
+  margin-top: 0;
+}
+.danger-note {
+  margin: -4px 14px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 #vt-list li {
   background: var(--panel);
   border: 1px solid var(--line);

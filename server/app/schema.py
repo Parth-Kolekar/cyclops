@@ -112,6 +112,21 @@ class ChatTurn(BaseModel):
     ts: Optional[int] = None  # epoch ms, client clock
 
 
+class AvailableVaultToken(BaseModel):
+    """A placeholder the client can resolve, from either vault tier.
+
+    Richer than the redaction manifest's counts: it names the exact token and
+    says which tier it came from, so the planner can reach for a remembered
+    value that is not visible anywhere on the current page.
+    """
+
+    token: str
+    kind: str
+    source: Literal["session", "persistent"] = "session"
+    label: str = ""
+    id: Optional[str] = None
+
+
 class SanitizedPayload(BaseModel):
     schema_: str = Field("cyclops.payload.v3", alias="schema")
     session_id: str
@@ -120,6 +135,8 @@ class SanitizedPayload(BaseModel):
     history: list[ActionRecord] = Field(default_factory=list)
     # The continuous conversation, loaded from localStorage by the extension.
     chat_history: list[ChatTurn] = Field(default_factory=list)
+    # Placeholders the client can resolve, from the session and persistent tiers.
+    available_vault_tokens: list[AvailableVaultToken] = Field(default_factory=list)
     page: PageInfo = Field(default_factory=PageInfo)
     viewport: Viewport = Field(default_factory=Viewport)
     elements: list[Element] = Field(default_factory=list)
