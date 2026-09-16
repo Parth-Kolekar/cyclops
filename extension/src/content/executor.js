@@ -2,23 +2,26 @@
  * Cyclops — action executor.
  *
  * Routes execution commands from the server to the robust tool scripts.
+ *
+ * The tools are imported statically and bundled into one classic script at
+ * build time. They used to be fetched at run time with
+ * `import(chrome.runtime.getURL(...))`, which works on a page that sends no
+ * CSP — our own demo pages, served by python's http.server — and is refused on
+ * most real sites, because a dynamic import from a content script is checked
+ * against the HOST PAGE's script-src. That is why the agent appeared to work
+ * only on the demo portal. Nothing is fetched at run time now, so no page's
+ * policy has an opinion about it.
  */
+
+import * as interaction from './tools/interaction.js';
+import * as navigation from './tools/navigation.js';
+import * as text from './tools/text.js';
+import * as utility from './tools/utility.js';
 
 window.CYCLOPS = window.CYCLOPS || {};
 
 (() => {
   const C = window.CYCLOPS;
-
-  // Cache for dynamically imported tool modules
-  const tools = {};
-
-  async function loadTool(name) {
-    if (!tools[name]) {
-      const url = chrome.runtime.getURL(`src/content/tools/${name}.js`);
-      tools[name] = await import(url);
-    }
-    return tools[name];
-  }
 
   function flash(el, colour = '#22d3ee') {
     const prev = el.style.outline;
@@ -75,33 +78,28 @@ window.CYCLOPS = window.CYCLOPS || {};
       return { ok: true, note: action.message };
     }
     if (action.action === 'wait') {
-      const util = await loadTool('utility');
-      return await util.wait(action.seconds);
+      return await utility.wait(action.seconds);
     }
     if (action.action === 'extract_text') {
-      const util = await loadTool('utility');
-      return await util.extractPageText();
+      return await utility.extractPageText();
     }
     if (action.action === 'execute_js') {
-      const util = await loadTool('utility');
-      return await util.executeJs(action.code);
+      return await utility.executeJs(action.code);
     }
     
     // 2. Navigation Tools
     if (['navigate', 'goback', 'reload', 'scroll'].includes(action.action)) {
-      const nav = await loadTool('navigation');
       switch (action.action) {
-        case 'navigate': return await nav.navigate(action.url || (action.host ? `${action.host}${action.path || '/'}` : ''));
-        case 'goback': return await nav.goBack();
-        case 'reload': return await nav.reloadPage();
-        case 'scroll': return await nav.scrollPage(action.direction, action.amount_px);
+        case 'navigate': return await navigation.navigate(action.url || (action.host ? `${action.host}${action.path || '/'}` : ''));
+        case 'goback': return await navigation.goBack();
+        case 'reload': return await navigation.reloadPage();
+        case 'scroll': return await navigation.scrollPage(action.direction, action.amount_px);
       }
     }
 
     // 3. Coordinate Interactions
     if (action.action === 'click_coordinate') {
-      const int = await loadTool('interaction');
-      return await int.clickCoordinate(action.x, action.y, action.double_click);
+      return await interaction.clickCoordinate(action.x, action.y, action.double_click);
     }
 
     // 4. Element Interactions (Requires resolving opaque ID)
@@ -110,8 +108,7 @@ window.CYCLOPS = window.CYCLOPS || {};
     
     // Some tools might allow null target (e.g. press_key defaults to activeElement)
     if (action.action === 'press_key') {
-      const txt = await loadTool('text');
-      return await txt.pressKey(action.key, action.target);
+      return await text.pressKey(action.key, action.target);
     }
 
     // Tools below strictly require a resolved target element
@@ -119,20 +116,15 @@ window.CYCLOPS = window.CYCLOPS || {};
     if (!el.isConnected) return { ok: false, error: `target ${action.target} left the DOM` };
 
     switch (action.action) {
-      case 'click': {
-        const int = await loadTool('interaction');
-        return await int.clickElement(action.target);
-      }
+      case 'click':
+        return await interaction.clickElement(action.target);
       case 'double_click': {
-        const int = await loadTool('interaction');
-        await int.clickElement(action.target);
-        await new Promise(r => setTimeout(r, 100));
-        return await int.clickElement(action.target);
+        await interaction.clickElement(action.target);
+        await new Promise((r) => setTimeout(r, 100));
+        return await interaction.clickElement(action.target);
       }
-      case 'fill': {
-        const txt = await loadTool('text');
-        return await txt.typeText(action.target, action.value);
-      }
+      case 'fill':
+        return await text.typeText(action.target, action.value);
       case 'select': {
         if (el.tagName.toLowerCase() !== 'select') {
           return { ok: false, error: `${action.target} is not a dropdown` };

@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm && node copy-assets.cjs",
-    "watch": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm --watch"
+    "build": "esbuild src/background/sw.js src/offscreen/vision.js --bundle --outdir=dist --format=esm && esbuild src/content/executor.js --bundle --outfile=dist/content/executor.js --format=iife && node copy-assets.cjs",
+    "watch": "esbuild src/background/sw.js src/offscreen/vision.js src/content/executor.js --bundle --outdir=dist --format=esm --watch"
   },
   "keywords": [],
   "author": "",

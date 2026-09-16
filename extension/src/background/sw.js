@@ -29,7 +29,7 @@ const CONTENT_VERSION = 3;
 const CONTENT_FILES = [
   'src/content/extractor.js',
   'src/content/pii.js',
-  'src/content/executor.js',
+  'dist/content/executor.js',
   'src/content/overlay.js',
   'src/content/index.js',
 ];
@@ -63,13 +63,60 @@ async function ensureContentScript(tabId) {
   await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_FILES });
 }
 
-async function getActiveTab() {
+const INTERNAL_PAGE_RE = /^(chrome|edge|about|chrome-extension):/;
+
+/**
+ * Every goal starts from the same known page. Two reasons, not one:
+ *
+ *   1. A blank New Tab page has nothing for a content script to attach to,
+ *      and Chrome refuses injection there outright — this used to be a hard
+ *      "open the demo page first" error.
+ *   2. A fixed, known starting point means a goal behaves the same way
+ *      whatever tab happened to be in front when Run was clicked, rather
+ *      than depending on the page the user forgot they had open.
+ *
+ * A goal is a destination, not a page to read, so nothing is lost by moving
+ * off whatever was on screen — the agent's first `navigate` action was going
+ * to take it wherever the goal actually needs anyway.
+ */
+const BOOTSTRAP_URL = 'https://www.google.com/';
+
+async function waitForLoad(tabId, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      reject(new Error('timed out waiting for the bootstrap page to load'));
+    }, timeoutMs);
+    function onUpdated(id, info) {
+      if (id === tabId && info.status === 'complete') {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }
+    }
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}
+
+async function getActiveTab({ bootstrap = false } = {}) {
   // `currentWindow` is unreliable from a service worker — it has no window of
   // its own. `lastFocusedWindow` is the one the user is actually looking at.
   let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab) [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) throw new Error('no active tab');
-  if (/^(chrome|edge|about|chrome-extension):/.test(tab.url || '')) {
+
+  if (bootstrap) {
+    // Unconditional: every goal begins at BOOTSTRAP_URL, not just a rescue
+    // for internal pages. Skip the round-trip only if we're already there.
+    if (tab.url !== BOOTSTRAP_URL) {
+      await chrome.tabs.update(tab.id, { url: BOOTSTRAP_URL });
+      await waitForLoad(tab.id);
+      [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    }
+    return tab;
+  }
+
+  if (INTERNAL_PAGE_RE.test(tab.url || '')) {
     throw new Error('cannot run on browser-internal pages — open the demo page first');
   }
   return tab;
@@ -117,7 +164,7 @@ async function perceive(tabId, { goal, step, history }) {
   const extractMs = performance.now() - t0;
 
   const t1 = performance.now();
-  const { elements, manifest, findings, assignments } = await sanitise(graph);
+  const { elements, page, manifest, findings, assignments } = await sanitise(graph);
   const sanitiseMs = performance.now() - t1;
 
   // Capture screenshot and redact visually
@@ -175,7 +222,7 @@ async function perceive(tabId, { goal, step, history }) {
     goal,
     history,
     available_vault_tokens: await vault.availableTokens(),
-    page: graph.page,
+    page,
     viewport: graph.viewport,
     elements,
     opaque_regions: graph.opaque_regions,

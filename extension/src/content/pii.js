@@ -382,13 +382,40 @@ window.CYCLOPS = window.CYCLOPS || {};
       // because the cell beside it says "Date of birth".
       const context = `${el.label || ''} ${el.pii_expects || ''} ${nearbyText(node)}`;
 
-      for (const [where, text] of [['value', el.value], ['text', el.text]]) {
+      // EVERY string this element ships, not just the two it displays.
+      // `label` resolves from aria-label first, so a signed-in account button
+      // whose accessible name is "Google Account: Name (name@gmail.com)" puts
+      // a live email in `label` and `aria_label` — both of which cross the
+      // network. Scanning only value/text let those through, the server's
+      // independent guard caught them, and the run died on a 422. If you add
+      // a string field to the Screen Graph, add it here too.
+      const surfaces = [
+        ['value', el.value],
+        ['text', el.text],
+        ['label', el.label],
+        ['placeholder', el.placeholder],
+        ['aria_label', el.aria_label],
+        ['html_id', el.html_id],
+        ['html_class', el.html_class],
+        ...(el.options || []).map((o, i) => [`option:${i}`, o]),
+      ];
+
+      const seen = new Set();
+      for (const [where, text] of surfaces) {
         if (!text) continue;
         for (const hit of scanText(text, context)) {
+          // The same value often appears in several surfaces of one element.
+          // One finding per value keeps the manifest and the boxes honest.
+          const dedupe = `${hit.kind} ${hit.value}`;
+          if (seen.has(dedupe)) continue;
+          seen.add(dedupe);
+
           findings.push({
             element_id: el.id,
             kind: hit.kind,
             value: hit.value,
+            // Only `text` can be located to a substring; everything else is an
+            // attribute, so the whole element is the safe box to black out.
             bbox: where === 'text'
               ? dilate(rectForSubstring(node, hit.value), scale)
               : dilate(node.getBoundingClientRect(), scale),
@@ -398,6 +425,21 @@ window.CYCLOPS = window.CYCLOPS || {};
           });
         }
       }
+    }
+
+    // The tab title crosses the network too, and on a signed-in mail client it
+    // is routinely "Inbox (12) - name@example.com - Gmail". It is not drawn on
+    // the page, so there is no box to black out — but it still must not ship.
+    for (const hit of scanText(graph.page?.title || '', 'page title')) {
+      findings.push({
+        element_id: '__page__',
+        kind: hit.kind,
+        value: hit.value,
+        bbox: [0, 0, 0, 0],
+        confidence: hit.confidence,
+        detector: hit.detector,
+        where: 'page_title',
+      });
     }
 
     graph.pii = {
