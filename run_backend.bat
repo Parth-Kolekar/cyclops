@@ -23,8 +23,9 @@ if %errorlevel% neq 0 (
 )
 
 :: 2. Virtual Environment Setup
-if not exist ".venv" (
+if not exist ".venv\Scripts\activate.bat" (
     echo Creating virtual environment in server\.venv...
+    if exist ".venv" rmdir /s /q .venv
     %PYTHON_CMD% -m venv .venv
     if %errorlevel% neq 0 (
         echo Error creating virtual environment.

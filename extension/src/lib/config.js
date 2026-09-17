@@ -32,6 +32,7 @@ export const MSG = {
   EXECUTE: 'EXECUTE',
   OVERLAY_SHOW: 'OVERLAY_SHOW',
   OVERLAY_OFF: 'OVERLAY_OFF',
+  OVERLAY_HIDE: 'OVERLAY_OFF',
   VAULT_LIST: 'VAULT_LIST',
   VAULT_CLEAR: 'VAULT_CLEAR',
   // The persistent tier. Popup <-> service worker only, so unlike the others

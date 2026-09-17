@@ -29,7 +29,7 @@
 
 import { ENDPOINTS, MSG, NAV_SETTLE_DELAY_MS, SETTLE_DELAY_MS } from '../lib/config.js';
 import { AutomationState } from './automation-state.js';
-import { ChatHistory } from './history.js';
+import { ChatHistory, Conversation } from './history.js';
 
 /**
  * Run the continuous automation loop.
@@ -56,11 +56,42 @@ export async function runAutomationLoop(
     return;
   }
 
-  AutomationState.start(goal);
-  const sessionId = AutomationState.getSessionId();
-
   // Load persisted history so the agent can resume across sessions.
   let history = await ChatHistory.load();
+  
+  const isResuming = history.length > 0 && history[history.length - 1].action?.action === 'ask_user';
+  let activeGoal = goal;
+  
+  if (isResuming) {
+    // The new input is actually the answer to the agent's question, not a new goal!
+    // Restore the old goal from session storage so the agent doesn't lose its purpose.
+    const stored = await chrome.storage.session.get('cyclops.originalGoal');
+    if (stored['cyclops.originalGoal']) {
+      activeGoal = stored['cyclops.originalGoal'];
+    }
+    
+    // Append the user's answer into the history so the LLM can read it.
+    history.push({
+      action: { action: 'chat_response', message: goal },
+      ok: true,
+      note: 'User provided answer'
+    });
+    await ChatHistory.save(history);
+    await Conversation.append('user', goal);
+  } else {
+    // New goal or conversational follow-up!
+    // Persist active goal and register user turn in multi-turn conversation.
+    await chrome.storage.session.set({ 'cyclops.originalGoal': goal });
+    await Conversation.append('user', goal);
+    // Keep recent action trace so planner retains context of what it already did on this site!
+    if (history.length > 5) {
+      history = history.slice(-5);
+      await ChatHistory.save(history);
+    }
+  }
+
+  AutomationState.start(activeGoal);
+  const sessionId = AutomationState.getSessionId();
 
   let exitCalled = false;
   let lastPlanner = null;
@@ -70,18 +101,16 @@ export async function runAutomationLoop(
     // Import inline to avoid circular dependency — getActiveTab lives in sw.js
     // and can throw if no suitable tab is open.
     //
-    // bootstrap: true — every goal starts from the same known page
-    // (google.com), whatever tab happened to be active when Run was clicked.
-    // Fixes the New Tab page case (nothing to inject a content script into)
-    // and makes a goal behave the same regardless of stale tab state.
-    const tab = await getActiveTab({ bootstrap: true });
+    // getActiveTab will only rescue internal pages (chrome://) by redirecting
+    // to google.com, leaving regular webpage tabs exactly where they are.
+    const tab = await getActiveTab({ bootstrap: false });
     await ensureContentScript(tab.id);
 
     // ------------------------------------------------- initial perception
     status('perceiving', 'step 1');
 
     const initial = await perceive(tab.id, {
-      goal,
+      goal: activeGoal,
       step: 0,
       history: history.slice(-5),
     });
@@ -128,7 +157,7 @@ export async function runAutomationLoop(
         // the answer is missing or stale, so this is cheap on the common path.
         await ensureContentScript(tab.id);
         perception = await perceive(tab.id, {
-          goal,
+          goal: activeGoal,
           step,
           history: history.slice(-5),
         });
@@ -185,9 +214,10 @@ export async function runAutomationLoop(
         exitCalled = true;
         trace({ kind: 'done', text: raw.summary || 'task complete' });
 
-        // Persist the completion in history.
+        // Persist the completion in history and multi-turn conversation.
         history.push({ action: raw, ok: true, note: raw.summary || 'task complete' });
         await ChatHistory.save(history);
+        await Conversation.append('assistant', raw.summary || 'task complete');
 
         break;
       }
@@ -221,8 +251,10 @@ export async function runAutomationLoop(
       // Everything else is a step row.
       if (result.ok && raw.action === 'ask_user') {
         trace({ kind: 'ask', text: raw.question });
+        await Conversation.append('assistant', raw.question);
       } else if (result.ok && raw.action === 'chat_response') {
         trace({ kind: 'say', text: raw.message });
+        await Conversation.append('assistant', raw.message);
       } else {
         trace({
           kind: result.ok ? 'act' : 'error',

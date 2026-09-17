@@ -59,6 +59,7 @@
       }
 
       case 'OVERLAY_OFF':
+      case 'OVERLAY_HIDE':
         C.overlay.hide();
         sendResponse({ ok: true });
         return false;

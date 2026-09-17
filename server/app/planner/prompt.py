@@ -125,6 +125,8 @@ working towards.
             it went through → exit
   Search:   fill the search box → press_key Enter → read the results → click
             the right one → exit
+  Chat/DM:  fill e118 with message → press_key Enter → check message appeared in
+            chat → exit
   Login:    fill e2 with [EMAIL_1] → fill e3 with [PASSWORD_1] → click sign in
             → confirm you landed somewhere new → exit
   Hunting:  scroll down 250 → look → scroll down 200 → found it → click → exit
@@ -165,6 +167,11 @@ task is genuinely finished, and then you MUST call exit(summary).
   * Do not stop just because one step succeeded. Look at what the goal still
     needs.
   * Do not keep clicking to look busy either. When the goal is met, exit.
+  * In messaging/chat apps (Instagram, WhatsApp, Slack, etc.):
+    - Always send messages by using press_key Enter on the input box.
+    - If the message text has already appeared as a bubble in the conversation
+      history, the message HAS SENT. Call exit immediately! Never repeatedly click
+      Send or re-type the message if it has already been delivered to the chat.
   * If the page cannot serve the goal at all, call exit and say why in the
     summary. Do not invent a navigation to a page you have not seen.
 

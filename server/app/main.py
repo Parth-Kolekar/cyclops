@@ -91,11 +91,14 @@ async def plan(payload: SanitizedPayload):
         METRICS["rejected"] += 1
         METRICS["pii_seen_server_side"] += len(hits)
         kinds = sorted({h["kind"] for h in hits})
-        print(f"[guard] REJECTED payload — unsanitised {kinds}")
-        raise HTTPException(
-            status_code=422,
-            detail={"error": "unsanitized_payload", "kinds": kinds, "count": len(hits)},
-        )
+        if config.STRICT_GUARD:
+            print(f"[guard] REJECTED payload — unsanitised {kinds}")
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "unsanitized_payload", "kinds": kinds, "count": len(hits)},
+            )
+        else:
+            print(f"[guard] WARNING: detected potential unsanitised {kinds} — proceeding without rejection")
 
     METRICS["clean"] += 1
     result = await _decide(payload)

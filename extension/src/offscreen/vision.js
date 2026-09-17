@@ -12,6 +12,18 @@ env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('dist/');
 // downloading must not hold the channel open past this.
 const DETECTOR_WAIT_MS = 8000;
 
+// YOLOS doesn't have a tokenizer, but transformers.js tries to fetch one anyway.
+// On some networks this hangs or throws a blocked fetch error, delaying perception.
+// We intercept it and return an immediate 404 to patch the error.
+const defaultFetch = fetch;
+env.fetch = (url, init) => {
+  if (url.includes('tokenizer_config.json') && url.includes('yolos')) {
+    return Promise.resolve(new Response(null, { status: 404, statusText: 'Not Found' }));
+  }
+  return defaultFetch(url, init);
+};
+env.logLevel = 'error'; // Silence non-fatal metadata fetch warnings in console
+
 let detectorPromise = null;
 
 async function loadDetector() {

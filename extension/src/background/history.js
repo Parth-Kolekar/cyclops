@@ -153,3 +153,40 @@ export const ChatHistory = {
     await chrome.storage.local.remove(STORAGE_KEY);
   },
 };
+
+const CONVERSATION_KEY = 'cyclops.conversation';
+
+export const Conversation = {
+  /**
+   * Load the continuous conversation turns.
+   * @returns {Promise<Array<{role: string, text: string, ts: number}>>}
+   */
+  async load() {
+    const data = await chrome.storage.local.get(CONVERSATION_KEY);
+    return data[CONVERSATION_KEY] || [];
+  },
+
+  /**
+   * Append a dialogue turn (user prompt or agent speech/completion).
+   * @param {'user'|'assistant'} role
+   * @param {string} text
+   */
+  async append(role, text) {
+    if (!text) return;
+    const history = await this.load();
+    history.push({
+      role,
+      text: cleanString(String(text).trim()),
+      ts: Date.now(),
+    });
+    // Keep last 20 turns so context doesn't blow prompt budget
+    const trimmed = history.slice(-20);
+    await chrome.storage.local.set({ [CONVERSATION_KEY]: trimmed });
+    return trimmed;
+  },
+
+  /** Wipe conversation history */
+  async clear() {
+    await chrome.storage.local.remove(CONVERSATION_KEY);
+  },
+};

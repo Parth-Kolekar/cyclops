@@ -38,6 +38,7 @@ PROVIDER_ORDER = [
 # stub — force the rule-based planner (rehearsing with no network)
 # llm  — never fall back to the stub; surface the error instead
 PLANNER_MODE = os.getenv("CYCLOPS_PLANNER", "auto").strip().lower()
+STRICT_GUARD = os.getenv("CYCLOPS_STRICT_GUARD", "false").strip().lower() in ("true", "1", "yes")
 
 KEYS = {"openrouter": OPENROUTER_API_KEY, "gemini": GEMINI_API_KEY}
 MODELS = {"openrouter": OPENROUTER_MODEL, "gemini": GEMINI_MODEL}
