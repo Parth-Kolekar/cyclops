@@ -109,11 +109,13 @@ export async function runAutomationLoop(
     // ------------------------------------------------- initial perception
     status('perceiving', 'step 1');
 
+    let tOverlay = performance.now();
     const initial = await perceive(tab.id, {
       goal: activeGoal,
       step: 0,
       history: history.slice(-5),
     });
+    tOverlay = performance.now();
 
     trace({
       kind: 'perceive',
@@ -161,6 +163,7 @@ export async function runAutomationLoop(
           step,
           history: history.slice(-5),
         });
+        tOverlay = performance.now();
 
         trace({
           kind: 'perceive',
@@ -212,6 +215,9 @@ export async function runAutomationLoop(
       // still accepted so a stale server build cannot hang the loop forever.
       if (raw.action === 'exit' || raw.action === 'done') {
         exitCalled = true;
+        const elapsed = performance.now() - tOverlay;
+        if (elapsed < 700) await new Promise((r) => setTimeout(r, 700 - elapsed));
+        await chrome.tabs.sendMessage(tab.id, { type: MSG.OVERLAY_HIDE }).catch(() => {});
         trace({ kind: 'done', text: raw.summary || 'task complete' });
 
         // Persist the completion in history and multi-turn conversation.
@@ -240,6 +246,12 @@ export async function runAutomationLoop(
         });
       }
 
+      // Ensure red boxes remain visible for at least 700ms so the user visibly sees what was scanned
+      const elapsed = performance.now() - tOverlay;
+      if (elapsed < 700) {
+        await new Promise((r) => setTimeout(r, 700 - elapsed));
+      }
+
       // --------------------------------------------------- execute
       status('acting', `step ${step + 1}`);
       const t2 = performance.now();
@@ -250,9 +262,11 @@ export async function runAutomationLoop(
       // they are traced as speech and the popup renders them as chat bubbles.
       // Everything else is a step row.
       if (result.ok && raw.action === 'ask_user') {
+        await chrome.tabs.sendMessage(tab.id, { type: MSG.OVERLAY_HIDE }).catch(() => {});
         trace({ kind: 'ask', text: raw.question });
         await Conversation.append('assistant', raw.question);
       } else if (result.ok && raw.action === 'chat_response') {
+        await chrome.tabs.sendMessage(tab.id, { type: MSG.OVERLAY_HIDE }).catch(() => {});
         trace({ kind: 'say', text: raw.message });
         await Conversation.append('assistant', raw.message);
       } else {
@@ -304,6 +318,10 @@ export async function runAutomationLoop(
   } finally {
     AutomationState.stop();
     status('idle', null);
+    if (tab?.id) {
+      await chrome.tabs.sendMessage(tab.id, { type: MSG.OVERLAY_HIDE }).catch(() => {});
+      await chrome.tabs.sendMessage(tab.id, { type: MSG.OVERLAY_OFF }).catch(() => {});
+    }
     console.log(
       `🔚 Automation ended — session ${sessionId}, ` +
       `${AutomationState.getStep()} steps`,
