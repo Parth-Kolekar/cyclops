@@ -1,8 +1,11 @@
 import { env, pipeline, AutoProcessor, AutoModelForObjectDetection } from '@huggingface/transformers';
 import { createWorker } from 'tesseract.js';
 
-// Configure transformers.js for browser extension environment
-env.allowLocalModels = false;
+// Configure transformers.js to load persistent model locally from extension
+env.allowLocalModels = true;
+env.allowRemoteModels = true;
+env.localModelPath = chrome.runtime.getURL('models/');
+env.remoteHost = 'https://hf-mirror.com/'; // fast mirror fallback if remote is ever needed
 env.useBrowserCache = true;
 // We try to use WebGPU if available, fallback to WASM
 env.backends.onnx.wasm.numThreads = 1;
@@ -66,14 +69,14 @@ getDetector();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'REDACT_IMAGE') {
-    handleRedact(msg.imageUri, msg.findings, msg.viewport, msg.opaque_regions)
+    handleRedact(msg.imageUri, msg.findings, msg.viewport, msg.opaque_regions, msg.elements)
       .then(result => sendResponse({ ok: true, imageUri: result }))
       .catch(err => sendResponse({ ok: false, error: err.toString() }));
     return true; // async response
   }
 });
 
-async function handleRedact(imageUri, findings = [], viewport = null, opaque_regions = []) {
+async function handleRedact(imageUri, findings = [], viewport = null, opaque_regions = [], elements = []) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = async () => {
@@ -96,19 +99,19 @@ async function handleRedact(imageUri, findings = [], viewport = null, opaque_reg
           if (detector) {
             let results;
             try {
-              results = await detector(imageUri, { threshold: 0.5 });
+              results = await detector(imageUri, { threshold: 0.35 });
             } catch (inferErr) {
               console.warn("Inference failed on current device, retrying with WASM...", inferErr);
               detector = await getDetector();
               if (detector) {
-                results = await detector(imageUri, { threshold: 0.5 });
+                results = await detector(imageUri, { threshold: 0.35 });
               }
             }
 
             if (Array.isArray(results)) {
               for (const res of results) {
                 const { box, label, score } = res;
-                if (box && label === 'person' && score > 0.5) {
+                if (box && label === 'person' && score > 0.35) {
                   const w = box.xmax - box.xmin;
                   const h = box.ymax - box.ymin;
                   // Guard against corrupt model outputs that cover nearly the entire screen
@@ -116,7 +119,13 @@ async function handleRedact(imageUri, findings = [], viewport = null, opaque_reg
                     console.warn("Ignoring suspiciously large detection box covering whole screen:", box);
                     continue;
                   }
-                  personBoxes.push({ x: box.xmin, y: box.ymin, w, h });
+                  const pad = 4;
+                  personBoxes.push({
+                    x: Math.max(0, box.xmin - pad),
+                    y: Math.max(0, box.ymin - pad),
+                    w: Math.min(canvas.width, w + pad * 2),
+                    h: Math.min(canvas.height, h + pad * 2)
+                  });
                 }
               }
             }
@@ -256,7 +265,47 @@ async function handleRedact(imageUri, findings = [], viewport = null, opaque_reg
           'Total Offscreen Vision': `${(t_ocr - t_start).toFixed(0)} ms`
         });
         
-        // Return redacted image
+        // 6. Draw interactive element overlays (crisp red bounding boxes + e-id tags) AFTER masking!
+        if (elements && viewport) {
+          const scaleX = img.width / viewport.w;
+          const scaleY = img.height / viewport.h;
+          const normScale = viewport.norm_scale || 1000;
+
+          for (const el of elements) {
+            if (!el.bbox) continue;
+            const [nx, ny, nw, nh] = el.bbox;
+            const cssX = nx / normScale;
+            const cssY = ny / normScale;
+            const cssW = nw / normScale;
+            const cssH = nh / normScale;
+
+            const x = cssX * scaleX;
+            const y = cssY * scaleY;
+            const w = cssW * scaleX;
+            const h = cssH * scaleY;
+
+            // Draw crisp red bounding box
+            ctx.strokeStyle = '#f43f5e';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x, y, w, h);
+
+            // Draw tag badge on top of element
+            const tag = el.id;
+            ctx.font = 'bold 11px ui-monospace, monospace';
+            const textWidth = ctx.measureText(tag).width;
+            const tagH = 13;
+            const tagW = textWidth + 6;
+            const tagY = y >= tagH ? y - tagH : y;
+
+            ctx.fillStyle = '#f43f5e';
+            ctx.fillRect(x, tagY, tagW, tagH);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(tag, x + 3, tagY + 10);
+          }
+        }
+
+        // Return redacted image with crisp overlays
         resolve(canvas.toDataURL('image/jpeg', 0.8));
       } catch (err) {
         reject(err);

@@ -171,14 +171,11 @@ async function perceive(tabId, { goal, step, history }) {
   try {
     let rawScreenshot = null;
     try {
-      await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_SHOW, graph, mode: 'redact' });
-      await new Promise(r => setTimeout(r, 100)); // allow DOM to paint
-
       const t2 = performance.now();
       rawScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
       screenshotMs = performance.now() - t2;
     } finally {
-      // Hide the overlay immediately so the user can use the page, even if capture fails
+      // Ensure no leftover DOM overlays on user page
       await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_HIDE }).catch(() => {});
       await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_OFF }).catch(() => {});
     }
@@ -192,7 +189,8 @@ async function perceive(tabId, { goal, step, history }) {
         imageUri: rawScreenshot,
         findings: findings,
         viewport: graph.viewport,
-        opaque_regions: graph.opaque_regions
+        opaque_regions: graph.opaque_regions,
+        elements: graph.elements
       });
       visionMs = performance.now() - t3;
       
