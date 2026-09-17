@@ -379,6 +379,60 @@ def _fmt_element(el) -> str:
     return " ".join(bits)
 
 
+def _fmt_placeholders(payload: SanitizedPayload) -> str:
+    """Every placeholder the extension can actually resolve, in two groups.
+
+    These used to be an `or` chain — vault tokens *or* manifest tokens, never
+    both — so whichever list came first silently hid the other. They are not
+    alternatives: `available_vault_tokens` carries the session tier (minted
+    from this page) plus the persistent tier (things the user asked us to
+    remember), while the manifest is built independently from this capture's
+    findings. `_offered_tokens` in llm.py validates against the union, so the
+    prompt has to offer the union too, or the model gets refused for using
+    something it was never told existed.
+
+    Split by tier because it changes what the model should do: an "on this
+    page" value is visible in front of it, a "saved" one is available anywhere
+    and is the only way to fill a field this page has no value for.
+    """
+    manifest = payload.redaction_manifest
+    seen: set[str] = set()
+    page: list[str] = []
+    saved: list[str] = []
+
+    for t in payload.available_vault_tokens:
+        if t.token in seen:
+            continue
+        seen.add(t.token)
+        detail = t.kind + (f", {t.label[:30]}" if t.label else "")
+        bucket = saved if t.source == "persistent" else page
+        bucket.append(f"{t.token}({detail})")
+
+    # Belt and braces: the manifest is computed independently of the vault, so
+    # anything it minted that the vault did not report still gets offered.
+    from_manifest = [
+        f"[{kind.upper()}_{n}]"
+        for kind, count in sorted(manifest.counts.items())
+        for n in range(1, count + 1)
+    ] or [f"[{kind.upper()}_1]" for kind in sorted(manifest.token_types)]
+    for tok in from_manifest:
+        if tok not in seen:
+            seen.add(tok)
+            page.append(tok)
+
+    lines = []
+    if page:
+        lines.append(f"  on this page:   {' '.join(page)}")
+    if saved:
+        lines.append(f"  saved in vault: {' '.join(saved)}")
+    if not lines:
+        lines.append(
+            "  (none — this page held no personal data, and the vault is "
+            "empty or locked)"
+        )
+    return "\n".join(lines)
+
+
 def _fmt_history(payload: SanitizedPayload) -> str:
     if not payload.history:
         return "  (nothing yet — this is the first step)"
@@ -413,16 +467,7 @@ def render(payload: SanitizedPayload) -> str:
     page = payload.page
     manifest = payload.redaction_manifest
 
-    tokens = [
-        f"{t.token}({t.kind}, {t.source}{', ' + t.label[:30] if t.label else ''})"
-        for t in payload.available_vault_tokens
-    ] or [
-        f"[{kind.upper()}_{n}]"
-        for kind, count in sorted(manifest.counts.items())
-        for n in range(1, count + 1)
-    ] or [
-        f"[{kind.upper()}_1]" for kind in sorted(manifest.token_types)
-    ]
+    placeholders = _fmt_placeholders(payload)
 
     elements = "\n".join(_fmt_element(el) for el in payload.elements) or "  (none)"
 
@@ -441,7 +486,7 @@ GOAL
   this is step {payload.step + 1}
 
 AVAILABLE PLACEHOLDERS
-  {" ".join(tokens) if tokens else "(none — no vault tokens are available)"}
+{placeholders}
 
 ELEMENTS
 {elements}
