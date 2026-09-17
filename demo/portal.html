@@ -2,41 +2,189 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Bhuvan — Satellite Data Request Portal</title>
+    <title>DigiLocker & National Benefit Portal — Verified Citizen Profile</title>
     <style>
-      :root { --ink: #0f172a; --muted: #64748b; --line: #e2e8f0; --brand: #0b5c8f; }
+      :root {
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --brand: #0b5c8f;
+        --brand-light: #e0f2fe;
+        --accent: #0284c7;
+        --card-bg: #ffffff;
+        --success: #059669;
+        --success-bg: #ecfdf5;
+      }
       * { box-sizing: border-box; }
       body {
-        font: 15px/1.55 system-ui, "Segoe UI", sans-serif;
-        color: var(--ink); background: #eef2f6; margin: 0; padding: 0 0 60px;
+        font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: var(--ink);
+        background: #f1f5f9;
+        margin: 0;
+        padding: 0 0 60px;
       }
       .topbar {
-        background: var(--brand); color: #fff; padding: 12px 28px;
-        display: flex; align-items: center; gap: 14px;
+        background: var(--brand);
+        color: #fff;
+        padding: 14px 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+      .topbar-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
       }
       .topbar .logo {
-        width: 30px; height: 30px; border-radius: 50%;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
         background: radial-gradient(circle at 35% 35%, #7dd3fc, #0369a1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 16px;
       }
-      .topbar h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; }
-      .topbar small { color: #bae6fd; font-size: 11px; display: block; font-weight: 400; }
-      .wrap { max-width: 940px; margin: 24px auto; padding: 0 20px;
-              display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+      .topbar h1 {
+        font-size: 17px;
+        margin: 0;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+      }
+      .topbar small {
+        color: #bae6fd;
+        font-size: 11px;
+        display: block;
+        font-weight: 400;
+      }
+      .badge-gov {
+        background: #0284c7;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .wrap {
+        max-width: 1040px;
+        margin: 28px auto;
+        padding: 0 20px;
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 24px;
+        align-items: start;
+      }
       .card {
-        background: #fff; border: 1px solid var(--line); border-radius: 12px;
-        padding: 22px; box-shadow: 0 2px 10px rgba(15, 23, 42, .05);
+        background: var(--card-bg);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
       }
-      h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .9px;
-           color: var(--muted); margin: 0 0 16px; }
-      .field { display: flex; justify-content: space-between; gap: 16px;
-               padding: 7px 0; border-bottom: 1px dashed var(--line); }
+      h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.9px;
+        color: var(--muted);
+        margin: 0 0 16px;
+      }
+      .field {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 8px 0;
+        border-bottom: 1px dashed var(--line);
+      }
       .field:last-child { border-bottom: 0; }
       .field .k { color: var(--muted); font-size: 13px; }
       .field .v { font-weight: 600; text-align: right; }
       .mono { font-family: ui-monospace, "Cascadia Mono", monospace; }
+
+      /* Aadhaar card image preview */
+      .document-preview-box {
+        margin: 16px 0 20px;
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px;
+      }
+      .document-preview-box h3 {
+        margin: 0 0 10px;
+        font-size: 12px;
+        color: #475569;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .verified-tag {
+        background: #dcfce7;
+        color: #166534;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 12px;
+      }
+      .aadhaar-img-wrap {
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        text-align: center;
+      }
+      .aadhaar-img-wrap img {
+        width: 100%;
+        max-height: 340px;
+        object-fit: contain;
+        display: block;
+      }
+
+      /* Navigation action button */
+      .nav-action-card {
+        background: linear-gradient(135deg, #0b5c8f 0%, #0369a1 100%);
+        color: #fff;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 4px 14px rgba(3, 105, 161, 0.2);
+        margin-bottom: 24px;
+      }
+      .nav-action-card h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .nav-action-card p {
+        margin: 0 0 18px;
+        font-size: 13px;
+        color: #e0f2fe;
+        line-height: 1.5;
+      }
+      .btn-primary {
+        display: inline-block;
+        width: 100%;
+        text-align: center;
+        background: #ffffff;
+        color: #0369a1;
+        font-weight: 700;
+        font-size: 14px;
+        padding: 12px 18px;
+        border-radius: 8px;
+        text-decoration: none;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.1s, box-shadow 0.1s;
+      }
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+
       label { display: block; margin: 14px 0 4px; font-size: 13px; font-weight: 600; }
       input, select, textarea {
-        width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1;
+        width: 100%; padding: 9px 12px; border: 1px solid #cbd5e1;
         border-radius: 8px; font: inherit; background: #fff;
       }
       button {
@@ -44,115 +192,139 @@
         background: var(--brand); color: #fff; font: inherit; font-weight: 600;
         cursor: pointer;
       }
-      .profile-head { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
-      .profile-head img { width: 66px; height: 66px; border-radius: 10px; display: block; }
-      .profile-head .n { font-weight: 700; font-size: 16px; }
-      .profile-head .r { color: var(--muted); font-size: 12px; }
+      .decoy {
+        background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+        padding: 12px 14px; margin-top: 16px;
+      }
+      .decoy h3 {
+        margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+        letter-spacing: 0.8px; color: #92400e;
+      }
+      #ok {
+        margin-top: 16px; padding: 12px; border-radius: 8px; background: #ecfdf5;
+        border: 1px solid #6ee7b7; color: #065f46; display: none;
+      }
       .note { font-size: 12px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
-      .decoy { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
-               padding: 12px 14px; margin-top: 14px; }
-      .decoy h3 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
-                  letter-spacing: .8px; color: #92400e; }
-      #ok { margin-top: 16px; padding: 12px; border-radius: 8px; background: #ecfdf5;
-            border: 1px solid #6ee7b7; color: #065f46; display: none; }
-      canvas { border: 1px solid var(--line); border-radius: 8px; margin-top: 14px; }
+      canvas { border: 1px solid var(--line); border-radius: 8px; margin-top: 14px; display: block; }
     </style>
   </head>
   <body>
     <div class="topbar">
-      <div class="logo"></div>
-      <h1>Bhuvan Data Services<small>Indian Space Research Organisation · demo portal</small></h1>
+      <div class="topbar-left">
+        <div class="logo">🏛️</div>
+        <div>
+          <h1>DigiLocker & National Benefit Portal</h1>
+          <small>Ministry of Electronics and Information Technology (MeitY) · Demo Environment</small>
+        </div>
+      </div>
+      <div class="badge-gov">Verified Citizen</div>
     </div>
 
     <div class="wrap">
-      <!-- =================================================== profile ==== -->
+      <!-- ============================================ Left: Citizen Profile & Aadhaar Card ==== -->
       <div class="card">
-        <h2>Applicant profile</h2>
+        <h2>Verified Citizen Identity & Profile</h2>
 
-        <div class="profile-head">
-          <img
-            id="portrait"
-            alt="Profile photograph"
-            src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&h=256"
-            crossorigin="anonymous"
-          />
-          <div>
-            <div class="n">Rohit Sharma</div>
-            <div class="r">Indian Institute of Tropical Meteorology, Pune</div>
+        <!-- Document Preview: Target Aadhaar Card Image -->
+        <div class="document-preview-box">
+          <h3>
+            <span>Government Aadhaar Card (Image)</span>
+            <span class="verified-tag">✓ UIDAI Verified</span>
+          </h3>
+          <div class="aadhaar-img-wrap">
+            <img
+              id="aadhaar-card-preview"
+              alt="Aadhaar Card of Amal Manoj"
+              src="https://imgv2-2-f.scribdassets.com/img/document/891886744/original/f5a6540eb6/1?v=1"
+              onerror="this.src='assets/aadhaar_sample.jpg'"
+              crossorigin="anonymous"
+            />
           </div>
+          <p class="note">
+            <b>Vision Redaction:</b> Tesseract OCR and YOLOS will detect and blackout the Aadhaar number, face, and address on this image before any pixels leave this device.
+          </p>
         </div>
 
-        <div class="field"><span class="k">Aadhaar number</span><span class="v mono">4321 8765 2109</span></div>
-        <div class="field"><span class="k">PAN</span><span class="v mono">ABCPD1234K</span></div>
+        <div class="field"><span class="k">Applicant full name</span><span class="v">Amal Manoj</span></div>
+        <div class="field"><span class="k">Aadhaar number</span><span class="v mono">2462 1047 9917</span></div>
+        <div class="field"><span class="k">Date of birth</span><span class="v mono">30/12/2003</span></div>
+        <div class="field"><span class="k">Gender</span><span class="v">Male</span></div>
         <div class="field"><span class="k">Mobile</span><span class="v mono">9876543210</span></div>
-        <div class="field"><span class="k">Email</span><span class="v mono">r.sharma@iitm.res.in</span></div>
-        <div class="field"><span class="k">Date of birth</span><span class="v mono">14/03/1991</span></div>
+        <div class="field"><span class="k">Email</span><span class="v mono">amal.manoj@example.com</span></div>
         <div class="field"><span class="k">Bank IFSC</span><span class="v mono">SBIN0001234</span></div>
-        <div class="field"><span class="k">Institute GSTIN</span><span class="v mono">27AAPFU0939F1ZV</span></div>
+        <div class="field"><span class="k">State & District</span><span class="v">Idukki, Kerala - 685585</span></div>
 
-        <!-- The DOM cannot see any of this; it is pixels. Step 4's job. -->
-        <canvas id="idcard" width="300" height="96"></canvas>
+        <!-- Canvas test pass (pixel-only text) -->
+        <canvas id="idcard" width="320" height="88"></canvas>
 
-        <!-- ================================================ decoys ==== -->
+        <!-- Precision Decoys -->
         <div class="decoy">
-          <h3>Not personal data — must NOT be redacted</h3>
-          <div class="field"><span class="k">Order reference</span><span class="v mono">4321 8765 2100</span></div>
-          <div class="field"><span class="k">Consignment no.</span><span class="v mono">9012345678901</span></div>
-          <div class="field"><span class="k">Dataset SKU</span><span class="v mono">CRTS3PAN2024</span></div>
-          <div class="field"><span class="k">Scene ID</span><span class="v mono">4000123456789010</span></div>
+          <h3>Precision Test — Non-PII Decoys (Must NOT be redacted)</h3>
+          <div class="field"><span class="k">Order reference</span><span class="v mono">2462 1047 9910</span></div>
+          <div class="field"><span class="k">Scholarship Scheme SKU</span><span class="v mono">DBT-GOV-2026</span></div>
+          <div class="field"><span class="k">Consignment tracking</span><span class="v mono">9012345678901</span></div>
         </div>
-        <p class="note">
-          The order reference above differs from the Aadhaar by a single digit
-          and fails its checksum. A regex-only detector redacts it; a detector
-          that validates does not. That difference is the precision number.
-        </p>
       </div>
 
-      <!-- ============================================== request form ==== -->
-      <div class="card">
-        <h2>New data request</h2>
-        <form id="req">
-          <label for="applicant">Applicant name</label>
-          <input id="applicant" name="applicant" type="text" autocomplete="name"
-                 placeholder="As per government ID" />
+      <!-- ============================================ Right: Navigation & Actions ==== -->
+      <div>
+        <!-- Multi-page Navigation Call-to-Action -->
+        <div class="nav-action-card">
+          <h3>Apply for National Higher Education Grant 2026</h3>
+          <p>
+            Navigate to the official grant application form and submit your credentials using your DigiLocker verified Aadhaar identity.
+          </p>
+          <a href="form.html" id="proceed-to-form-btn" class="btn-primary">
+            Proceed to Application Form (New Page) →
+          </a>
+        </div>
 
-          <label for="aadhaar">Aadhaar number</label>
-          <input id="aadhaar" name="aadhaar" type="text" inputmode="numeric"
-                 placeholder="12-digit Aadhaar" />
+        <!-- In-page Quick Form Option -->
+        <div class="card">
+          <h2>Direct Registration Form</h2>
+          <form id="req">
+            <label for="applicant">Applicant name</label>
+            <input id="applicant" name="applicant" type="text" autocomplete="name"
+                   placeholder="As per Aadhaar card" />
 
-          <label for="contact">Mobile number</label>
-          <input id="contact" name="contact" type="tel" autocomplete="tel"
-                 placeholder="10-digit mobile" />
+            <label for="aadhaar">Aadhaar number</label>
+            <input id="aadhaar" name="aadhaar" type="text" inputmode="numeric"
+                   placeholder="12-digit Aadhaar number" />
 
-          <label for="satellite">Satellite</label>
-          <select id="satellite" name="satellite">
-            <option value="">Choose a satellite…</option>
-            <option>Cartosat-3</option>
-            <option>Resourcesat-2A</option>
-            <option>Oceansat-3</option>
-          </select>
+            <label for="contact">Mobile number</label>
+            <input id="contact" name="contact" type="tel" autocomplete="tel"
+                   placeholder="10-digit mobile number" />
 
-          <label for="aoi">Area of interest</label>
-          <input id="aoi" name="aoi" type="text" placeholder="District or bounding box" />
+            <label for="scheme">Benefit category</label>
+            <select id="scheme" name="scheme">
+              <option value="">Choose a scheme category…</option>
+              <option selected>National Higher Education & Skill Grant</option>
+              <option>Prime Minister Research Fellowship</option>
+              <option>Direct Agricultural DBT Support</option>
+            </select>
 
-          <label for="purpose">Purpose</label>
-          <textarea id="purpose" name="purpose" rows="2"
-                    placeholder="Why is this data needed?"></textarea>
+            <label for="aoi">Area / District</label>
+            <input id="aoi" name="aoi" type="text" placeholder="e.g. Idukki district" />
 
-          <label for="search">Search the catalogue</label>
-          <input id="search" name="search" type="search"
-                 placeholder="Free-text search — not a personal-data field" />
+            <label for="purpose">Purpose</label>
+            <textarea id="purpose" name="purpose" rows="2"
+                      placeholder="Academic research and higher study"></textarea>
 
-          <button type="submit">Submit request</button>
-        </form>
+            <label for="search">Search the catalogue (Trap)</label>
+            <input id="search" name="search" type="search"
+                   placeholder="Free-text search — not a personal-data field" />
 
-        <div id="ok">Request submitted.</div>
+            <button type="submit" id="submit-btn">Submit request</button>
+          </form>
 
-        <p class="note">
-          The <b>Search the catalogue</b> box is the trap. It is not a
-          personal-data field, so the vault must refuse to type an Aadhaar into
-          it even if the server explicitly asks.
-        </p>
+          <div id="ok">Request submitted successfully.</div>
+
+          <p class="note">
+            The <b>Search the catalogue</b> box is a trap. It is not a
+            personal-data field, so the vault must refuse to type an Aadhaar into
+            it even if the server explicitly asks.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -162,21 +334,21 @@
         document.getElementById('ok').style.display = 'block';
       });
 
-      // An ID card rendered as pixels — invisible to the DOM walker by design.
+      // Canvas pixel pass
       const ctx = document.getElementById('idcard').getContext('2d');
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 300, 96);
+      ctx.fillRect(0, 0, 320, 88);
       ctx.fillStyle = '#67e8f9';
       ctx.font = '600 11px system-ui, sans-serif';
-      ctx.fillText('ISRO / BHUVAN RESEARCH PASS', 14, 24);
+      ctx.fillText('DIGILOCKER / GOVERNMENT VERIFIED PASS', 14, 22);
       ctx.fillStyle = '#f8fafc';
       ctx.font = '14px system-ui, sans-serif';
-      ctx.fillText('Rohit Sharma', 14, 50);
+      ctx.fillText('Amal Manoj', 14, 46);
       ctx.font = '13px ui-monospace, monospace';
-      ctx.fillText('4321 8765 2109', 14, 72);
+      ctx.fillText('2462 1047 9917', 14, 68);
       ctx.fillStyle = '#94a3b8';
       ctx.font = '10px system-ui, sans-serif';
-      ctx.fillText('valid through 2027', 190, 72);
+      ctx.fillText('valid through 2030', 210, 68);
     </script>
   </body>
 </html>

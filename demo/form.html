@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>National Scholarship & Benefit Portal — Application Form</title>
+    <style>
+      :root {
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: #cbd5e1;
+        --brand: #0b5c8f;
+        --brand-dark: #07476f;
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --success: #059669;
+        --success-bg: #ecfdf5;
+      }
+      * { box-sizing: border-box; }
+      body {
+        font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        margin: 0;
+        padding: 0 0 60px;
+      }
+      .topbar {
+        background: var(--brand);
+        color: #fff;
+        padding: 14px 32px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      }
+      .logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, #7dd3fc, #0284c7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 18px;
+      }
+      .topbar h1 {
+        font-size: 18px;
+        margin: 0;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+      }
+      .topbar small {
+        color: #bae6fd;
+        font-size: 12px;
+        display: block;
+        font-weight: 400;
+      }
+      .wrap {
+        max-width: 720px;
+        margin: 32px auto;
+        padding: 0 20px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 32px;
+        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+      }
+      .back-nav {
+        margin-bottom: 20px;
+      }
+      .back-nav a {
+        color: var(--brand);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .back-nav a:hover { text-decoration: underline; }
+      h2 {
+        font-size: 20px;
+        margin: 0 0 8px;
+        color: var(--ink);
+      }
+      .subhead {
+        color: var(--muted);
+        font-size: 14px;
+        margin-bottom: 24px;
+      }
+      .form-group {
+        margin-bottom: 18px;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #334155;
+      }
+      input, select, textarea {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font: inherit;
+        background: #fff;
+        color: var(--ink);
+        transition: border-color 0.15s;
+      }
+      input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: var(--brand);
+        box-shadow: 0 0 0 3px rgba(11, 92, 143, 0.12);
+      }
+      .trap-box {
+        background: #fffbeb;
+        border: 1px solid #fef3c7;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-top: 8px;
+      }
+      .trap-box small {
+        color: #b45309;
+        font-size: 11px;
+        display: block;
+      }
+      button.submit-btn {
+        margin-top: 24px;
+        width: 100%;
+        padding: 14px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--brand);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        font-size: 15px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      button.submit-btn:hover {
+        background: var(--brand-dark);
+      }
+      #success-box {
+        margin-top: 24px;
+        padding: 18px;
+        border-radius: 10px;
+        background: var(--success-bg);
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+        display: none;
+      }
+      #success-box h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+      }
+      #success-box p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="logo">🏛️</div>
+      <div>
+        <h1>National e-Governance Services Portal</h1>
+        <small>Ministry of Electronics and Information Technology (MeitY) · Demo Form</small>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="back-nav">
+        <a href="portal.html">← Back to Profile & Aadhaar Card</a>
+      </div>
+
+      <div class="card">
+        <h2>Direct Benefit Transfer (DBT) Grant Application</h2>
+        <div class="subhead">Please fill in your verified applicant details to finalize and submit your application.</div>
+
+        <form id="grant-form">
+          <div class="form-group">
+            <label for="applicant">Applicant Full Name</label>
+            <input id="applicant" name="applicant" type="text" autocomplete="name"
+                   placeholder="As per government Aadhaar card" required />
+          </div>
+
+          <div class="form-group">
+            <label for="aadhaar">Aadhaar Number</label>
+            <input id="aadhaar" name="aadhaar" type="text" inputmode="numeric"
+                   placeholder="12-digit Aadhaar number" required />
+          </div>
+
+          <div class="form-group">
+            <label for="contact">Mobile Number</label>
+            <input id="contact" name="contact" type="tel" autocomplete="tel"
+                   placeholder="10-digit registered mobile number" />
+          </div>
+
+          <div class="form-group">
+            <label for="scheme">Scheme Category</label>
+            <select id="scheme" name="scheme">
+              <option value="">Select a benefit grant…</option>
+              <option selected>National Higher Education & Skill Development Grant</option>
+              <option>Prime Minister Research Fellowship</option>
+              <option>Direct Agricultural DBT Support</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="area">District / Domicile</label>
+            <input id="area" name="area" type="text" placeholder="e.g. Idukki district" />
+          </div>
+
+          <div class="form-group">
+            <label for="purpose">Statement of Purpose</label>
+            <textarea id="purpose" name="purpose" rows="2"
+                      placeholder="Academic research and higher study assistance"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="search">Catalogue Search (Security Decoy)</label>
+            <input id="search" name="search" type="search"
+                   placeholder="Search public schemes — non-PII field" />
+            <div class="trap-box">
+              <small>Security Trap: Vault will refuse to populate sensitive tokens into this public search field.</small>
+            </div>
+          </div>
+
+          <button id="submit-btn" type="submit" class="submit-btn">Submit Grant Application</button>
+        </form>
+
+        <div id="success-box">
+          <h3>✅ Application Submitted Successfully!</h3>
+          <p>
+            Application Reference <b>#DBT-2026-9917</b> has been received and verified.
+            <br />
+            <strong>Privacy Guarantee:</strong> All personal details were supplied securely from local vault tokens; zero raw Aadhaar or phone numbers reached cloud servers.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.getElementById('grant-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        document.getElementById('success-box').style.display = 'block';
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      });
+    </script>
+  </body>
+</html>
+
