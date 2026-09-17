@@ -16,7 +16,7 @@ import { AutomationState } from './automation-state.js';
 import { runAutomationLoop, setSwHelpers } from './automation-loop.js';
 // Still needed here for the popup's "clear history" command; the loop itself
 // loads and saves through its own import.
-import { ChatHistory } from './history.js';
+import { ChatHistory, Conversation } from './history.js';
 
 /**
  * Bump when the content-script protocol changes. A tab still running an older
@@ -105,20 +105,16 @@ async function getActiveTab({ bootstrap = false } = {}) {
   if (!tab) [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) throw new Error('no active tab');
 
-  if (bootstrap) {
-    // Unconditional: every goal begins at BOOTSTRAP_URL, not just a rescue
-    // for internal pages. Skip the round-trip only if we're already there.
+  // Only redirect if explicitly requested or if on an internal browser page
+  // (chrome://, about:, etc.) where extensions are forbidden from injecting.
+  if (bootstrap || INTERNAL_PAGE_RE.test(tab.url || '')) {
     if (tab.url !== BOOTSTRAP_URL) {
       await chrome.tabs.update(tab.id, { url: BOOTSTRAP_URL });
       await waitForLoad(tab.id);
       [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     }
-    return tab;
   }
 
-  if (INTERNAL_PAGE_RE.test(tab.url || '')) {
-    throw new Error('cannot run on browser-internal pages — open the demo page first');
-  }
   return tab;
 }
 
@@ -173,32 +169,34 @@ async function perceive(tabId, { goal, step, history }) {
   let visionMs = 0;
   
   try {
-    // Engineer 2: Render the unified overlay (red boxes + DOM black boxes) BEFORE taking the screenshot
-    // so the AI actually sees the opaque e-ids it needs to interact with.
-    await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_SHOW, graph, mode: 'redact' });
-    await new Promise(r => setTimeout(r, 100)); // allow DOM to paint
+    let rawScreenshot = null;
+    try {
+      const t2 = performance.now();
+      rawScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
+      screenshotMs = performance.now() - t2;
+    } finally {
+      // Ensure no leftover DOM overlays on user page
+      await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_HIDE }).catch(() => {});
+      await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_OFF }).catch(() => {});
+    }
 
-    const t2 = performance.now();
-    const rawScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
-    screenshotMs = performance.now() - t2;
-    
-    // Hide the overlay immediately so the user can use the page
-    await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_HIDE });
-
-    await ensureOffscreenDocument();
-    
-    const t3 = performance.now();
-    const redactRes = await chrome.runtime.sendMessage({
-      type: 'REDACT_IMAGE',
-      imageUri: rawScreenshot,
-      findings: findings,
-      viewport: graph.viewport,
-      opaque_regions: graph.opaque_regions
-    });
-    visionMs = performance.now() - t3;
-    
-    if (redactRes && redactRes.ok) {
-      image_base64 = redactRes.imageUri;
+    if (rawScreenshot) {
+      await ensureOffscreenDocument();
+      
+      const t3 = performance.now();
+      const redactRes = await chrome.runtime.sendMessage({
+        type: 'REDACT_IMAGE',
+        imageUri: rawScreenshot,
+        findings: findings,
+        viewport: graph.viewport,
+        opaque_regions: graph.opaque_regions,
+        elements: graph.elements
+      });
+      visionMs = performance.now() - t3;
+      
+      if (redactRes && redactRes.ok) {
+        image_base64 = redactRes.imageUri;
+      }
     }
   } catch (err) {
     console.error("Screenshot or visual redaction failed:", err);
@@ -214,6 +212,8 @@ async function perceive(tabId, { goal, step, history }) {
     'Total Perceive': `${perceiveMs.toFixed(0)} ms`
   });
 
+  const chat_history = await Conversation.load();
+
   const payload = {
     schema: 'cyclops.payload.v2',
     // sessionId comes from AutomationState (set at the top of perceive).
@@ -221,6 +221,7 @@ async function perceive(tabId, { goal, step, history }) {
     step,
     goal,
     history,
+    chat_history,
     available_vault_tokens: await vault.availableTokens(),
     page,
     viewport: graph.viewport,
@@ -238,12 +239,29 @@ async function perceive(tabId, { goal, step, history }) {
     throw new Error(`refusing to send — ${leaked.join(', ')} survived sanitisation`);
   }
 
+  // Accumulate all trace screenshots in session storage for the Privacy panel
+  const { traceScreenshots = [] } = await chrome.storage.session.get('traceScreenshots');
+  if (image_base64) {
+    traceScreenshots.push({
+      step,
+      goal: goal || '',
+      url: page.url_host || '',
+      title: page.title || '',
+      image_base64,
+      ts: Date.now(),
+      findingsCount: findings.length,
+      elementsCount: elements.length,
+    });
+  }
+  const trimmedScreenshots = traceScreenshots.slice(-20);
+
   // Keep both sides so the popup can show them next to each other. This is
   // the "here is every byte that left the machine" panel.
   await chrome.storage.session.set({
     lastGraph: graph,
     lastPayload: payload,
     lastFindings: findings.map((f) => ({ ...f, token: assignments[`${f.kind}\0${f.value}`] })),
+    traceScreenshots: trimmedScreenshots,
     stats: STATS,
   });
 
@@ -381,6 +399,8 @@ const VAULT_OPS = {
 
   [MSG.HISTORY_CLEAR]: async () => {
     await ChatHistory.clear();
+    await Conversation.clear();
+    await chrome.storage.session.remove('traceScreenshots');
     return {};
   },
 };

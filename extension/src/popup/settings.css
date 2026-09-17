@@ -43,6 +43,56 @@ body.settings .stats { grid-template-columns: repeat(4, 1fr); }
 #pv-screenshot { max-width: 100%; border: 1px solid var(--line); border-radius: 8px; }
 #pv-screenshot-container h3 { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
 
+/* Screenshots gallery in Privacy */
+.screenshots-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 18px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.screenshot-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.screenshot-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.screenshot-head .step-num {
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.screenshot-head .step-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.screenshot-img {
+  width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #000;
+}
+
+
 .raw { margin: 0 18px 18px; }
 .raw summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 6px 0; }
 .raw pre {

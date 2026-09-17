@@ -39,5 +39,16 @@
       "run_at": "document_idle",
       "all_frames": false
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "models/*",
+        "dist/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
   ]
 }

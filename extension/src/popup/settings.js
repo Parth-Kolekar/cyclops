@@ -115,7 +115,7 @@ function showGraph(g) {
 
 // --------------------------------------------------------- privacy panel
 
-function renderPrivacy({ graph: g, payload, findings, stats }) {
+function renderPrivacy({ graph: g, payload, findings, stats, screenshots }) {
   const kinds = [...new Set(findings.map((f) => f.kind))];
   const row = (k, v) => `<div class="s"><span>${k}</span><span>${v}</span></div>`;
 
@@ -157,6 +157,56 @@ function renderPrivacy({ graph: g, payload, findings, stats }) {
       $pvList.appendChild(li);
     }
   }
+
+function renderScreenshots(screenshots = []) {
+  const $block = $('pv-screenshots-block');
+  const $gallery = $('pv-screenshots-gallery');
+  const $count = $('pv-screenshots-count');
+
+  if (!screenshots || !screenshots.length) {
+    if ($block) $block.classList.add('hidden');
+    return;
+  }
+
+  if ($block) $block.classList.remove('hidden');
+  if ($count) $count.textContent = `${screenshots.length} captured`;
+
+  $gallery.innerHTML = '';
+  for (let i = 0; i < screenshots.length; i++) {
+    const item = screenshots[i];
+    const card = document.createElement('div');
+    card.className = 'screenshot-card';
+
+    const head = document.createElement('div');
+    head.className = 'screenshot-head';
+    const stepLabel = item.step != null ? `Step ${item.step + 1}` : `Capture ${i + 1}`;
+    const metaParts = [];
+    if (item.title) metaParts.push(item.title.slice(0, 35));
+    if (item.elementsCount != null) metaParts.push(`${item.elementsCount} elements`);
+    if (item.findingsCount != null && item.findingsCount > 0) metaParts.push(`${item.findingsCount} PII redacted`);
+    const metaText = metaParts.join(' · ');
+
+    head.innerHTML = `<span class="step-num">${stepLabel}</span><span class="step-meta">${metaText}</span>`;
+
+    const img = document.createElement('img');
+    img.src = item.image_base64;
+    img.alt = `${stepLabel} redacted screenshot`;
+    img.className = 'screenshot-img';
+    img.loading = 'lazy';
+
+    card.appendChild(head);
+    card.appendChild(img);
+    $gallery.appendChild(card);
+  }
+}
+
+  renderScreenshots(screenshots || (payload?.image_base64 ? [{
+    step: payload.step,
+    title: payload.page?.title || '',
+    image_base64: payload.image_base64,
+    elementsCount: payload.elements?.length || 0,
+    findingsCount: findings.length,
+  }] : []));
 
   const payloadCopy = { ...payload };
   const $container = $('pv-screenshot-container');
@@ -238,11 +288,13 @@ $audit.addEventListener('click', async () => {
       return;
     }
     graph = res.graph;
+    const { traceScreenshots = [] } = await chrome.storage.session.get('traceScreenshots');
     renderPrivacy({
       graph: res.graph,
       payload: res.payload,
       findings: res.graph.pii?.findings ?? [],
       stats: res.stats,
+      screenshots: traceScreenshots,
     });
     await renderVault();
   } finally {
@@ -394,7 +446,7 @@ function showTarget() {
 
 (async () => {
   const stored = await chrome.storage.session.get([
-    'settingsTarget', 'lastGraph', 'lastPayload', 'lastFindings', 'stats',
+    'settingsTarget', 'lastGraph', 'lastPayload', 'lastFindings', 'stats', 'traceScreenshots',
   ]);
   target = stored.settingsTarget || null;
   showTarget();
@@ -402,12 +454,13 @@ function showTarget() {
   if (stored.lastGraph) showGraph(stored.lastGraph);
   else $sgList.innerHTML = '<li class="empty">Hit “Scan page”.</li>';
 
-  if (stored.lastPayload) {
+  if (stored.lastPayload || stored.traceScreenshots?.length) {
     renderPrivacy({
       graph: stored.lastGraph,
       payload: stored.lastPayload,
       findings: stored.lastFindings || [],
       stats: stored.stats,
+      screenshots: stored.traceScreenshots || [],
     });
   } else {
     $pvList.innerHTML = '<li class="empty">Hit “Show what leaves”.</li>';

@@ -71,7 +71,7 @@ exit /b 1
 echo.
 echo -----------------------------------------
 echo Demo Portal:    http://localhost:5500/demo/portal.html
-echo Demo Form:      http://localhost:5500/demo/test-page.html
+echo Demo Form:      http://localhost:5500/demo/form.html
 echo.
 echo To load extension in Chrome:
 echo   1. Open chrome://extensions
