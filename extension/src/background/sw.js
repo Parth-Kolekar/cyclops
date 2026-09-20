@@ -170,15 +170,19 @@ async function perceive(tabId, { goal, step, history }) {
   
   try {
     let rawScreenshot = null;
-    try {
-      const t2 = performance.now();
-      rawScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
-      screenshotMs = performance.now() - t2;
-    } finally {
-      // Ensure no leftover DOM overlays on user page
-      await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_HIDE }).catch(() => {});
-      await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_OFF }).catch(() => {});
-    }
+    const t2 = performance.now();
+    rawScreenshot = await chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 80 });
+    screenshotMs = performance.now() - t2;
+
+    // Show the visual overlay on the live page so the user sees what the agent is scanning!
+    const annotatedGraph = {
+      ...graph,
+      pii: {
+        ...graph.pii,
+        findings: findings.map((f) => ({ ...f, token: assignments[`${f.kind}\0${f.value}`] })),
+      },
+    };
+    await chrome.tabs.sendMessage(tabId, { type: MSG.OVERLAY_SHOW, graph: annotatedGraph, mode: 'redact' }).catch(() => {});
 
     if (rawScreenshot) {
       await ensureOffscreenDocument();
@@ -422,6 +426,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: true });
   } else if (msg.type === MSG.STOP) {
     AutomationState.stop();
+    getActiveTab({ bootstrap: false }).then((tab) => {
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { type: MSG.OVERLAY_HIDE }).catch(() => {});
+        chrome.tabs.sendMessage(tab.id, { type: MSG.OVERLAY_OFF }).catch(() => {});
+      }
+    }).catch(() => {});
     sendResponse({ ok: true });
   } else if (msg.type === MSG.INSPECT) {
     inspect(msg.mode, msg.tabId)
